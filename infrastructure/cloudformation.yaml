@@ -1,0 +1,165 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Visuasort - Complete Infrastructure as Code deployment'
+
+Parameters:
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: EC2 Key Pair for SSH access
+    Default: n11693860
+  
+  JWTSecret:
+    Type: String
+    Description: JWT Secret for authentication
+    Default: supersecret
+    NoEcho: true
+  
+  ImaggaAPIKey:
+    Type: String
+    Description: Imagga API Key (optional)
+    Default: "your_imagga_api_key"
+    NoEcho: true
+  
+  ImaggaAPISecret:
+    Type: String
+    Description: Imagga API Secret (optional)
+    Default: "your_imagga_api_secret"
+    NoEcho: true
+  
+  HuggingFaceAPIKey:
+    Type: String
+    Description: Hugging Face API Key (optional)
+    Default: "your_huggingface_token_here"
+    NoEcho: true
+
+Resources:
+  # Security Group
+  VisuasortSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Visuasort application
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+          Description: SSH access
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+          Description: Visuasort application
+      Tags:
+        - Key: Name
+          Value: visuasort-sg
+
+  # IAM Role for EC2 to access ECR
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Tags:
+        - Key: Name
+          Value: visuasort-ec2-role
+
+  # Instance Profile
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2Role
+
+  # EC2 Instance
+  VisuasortInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0146fc9ad419e2cfd  # Ubuntu 24.04 LTS in ap-southeast-2
+      InstanceType: t3.micro
+      KeyName: !Ref KeyPairName
+      SecurityGroupIds:
+        - !Ref VisuasortSecurityGroup
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          
+          # Update system
+          apt-get update -y
+          
+          # Install Docker
+          apt-get install -y docker.io
+          systemctl start docker
+          systemctl enable docker
+          usermod -aG docker ubuntu
+          
+          # Install AWS CLI
+          apt-get install -y awscli
+          
+          # Configure AWS region
+          mkdir -p /home/ubuntu/.aws
+          echo "[default]" > /home/ubuntu/.aws/config
+          echo "region = ap-southeast-2" >> /home/ubuntu/.aws/config
+          chown -R ubuntu:ubuntu /home/ubuntu/.aws
+          
+          # Wait for Docker to be ready
+          sleep 10
+          
+          # Login to ECR
+          aws ecr get-login-password --region ap-southeast-2 | docker login --username AWS --password-stdin 901444280953.dkr.ecr.ap-southeast-2.amazonaws.com
+          
+          # Pull and run the container
+          docker pull 901444280953.dkr.ecr.ap-southeast-2.amazonaws.com/n11693860-repo:latest
+          
+          # Run container with environment variables
+          docker run -d \
+            --name visuasort \
+            --restart unless-stopped \
+            -p 3000:3000 \
+            -e JWT_SECRET="${JWTSecret}" \
+            -e IMAGGA_API_KEY="${ImaggaAPIKey}" \
+            -e IMAGGA_API_SECRET="${ImaggaAPISecret}" \
+            -e AI_API_KEY="${HuggingFaceAPIKey}" \
+            -e AI_API_URL="https://api-inference.huggingface.co/models/microsoft/resnet-50" \
+            -e NODE_ENV=production \
+            901444280953.dkr.ecr.ap-southeast-2.amazonaws.com/n11693860-repo:latest
+          
+          # Create status file
+          echo "Visuasort deployment completed at $(date)" > /home/ubuntu/deployment-status.txt
+          chown ubuntu:ubuntu /home/ubuntu/deployment-status.txt
+          
+      Tags:
+        - Key: Name
+          Value: visuasort-instance
+
+Outputs:
+  InstanceId:
+    Description: EC2 Instance ID
+    Value: !Ref VisuasortInstance
+    Export:
+      Name: !Sub "${AWS::StackName}-InstanceId"
+  
+  PublicIP:
+    Description: Public IP address of the instance
+    Value: !GetAtt VisuasortInstance.PublicIp
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicIP"
+  
+  ApplicationURL:
+    Description: Visuasort application URL
+    Value: !Sub "http://${VisuasortInstance.PublicIp}:3000"
+    Export:
+      Name: !Sub "${AWS::StackName}-AppURL"
+  
+  SSHCommand:
+    Description: SSH command to connect to the instance
+    Value: !Sub "ssh -i n11693860.pem ubuntu@${VisuasortInstance.PublicIp}"
+    Export:
+      Name: !Sub "${AWS::StackName}-SSH"

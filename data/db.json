@@ -1,0 +1,21 @@
+{
+  "images": [
+    {
+      "id": "1756595992570",
+      "filename": "1756595990839-URIK8938_enhanced.jpg",
+      "displayName": "URIK8938 (Enhanced)",
+      "originalPath": "uploads/1756595990778-URIK8938.JPG",
+      "enhancedPath": "uploads/1756595990839-URIK8938_enhanced.jpg",
+      "thumbnailPath": "uploads/1756595990839-URIK8938_thumb.jpg",
+      "webPath": "uploads/1756595990839-URIK8938_web.webp",
+      "tags": [
+        "picket fence",
+        "fence"
+      ],
+      "uploadDate": "2025-08-30T23:19:52.570Z",
+      "size": 2583691,
+      "owner": "admin",
+      "hasEnhancements": true
+    }
+  ]
+}

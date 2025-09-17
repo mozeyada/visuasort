@@ -1,0 +1,18 @@
+# Simple Docker Run Command for AWS EC2
+# Copy and paste this command on your EC2 instance after pushing to ECR
+
+docker run -d \
+  --name visuasort-app \
+  --restart unless-stopped \
+  -p 3000:3000 \
+  -e PORT=3000 \
+  -e JWT_SECRET="supersecret" \
+  -e AI_API_KEY="your_huggingface_token_here" \
+  -e AI_API_URL="https://api-inference.huggingface.co/models/microsoft/resnet-50" \
+  -e IMAGGA_API_KEY="your_imagga_api_key" \
+  -e IMAGGA_API_SECRET="your_imagga_api_secret" \
+  -e NODE_ENV="production" \
+  YOUR_ECR_URL/visuasort:latest
+
+# Replace YOUR_ECR_URL with your actual ECR repository URL
+# Example: 123456789012.dkr.ecr.ap-southeast-2.amazonaws.com/visuasort:latest
