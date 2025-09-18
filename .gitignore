@@ -23,3 +23,7 @@ DEPLOYMENT.md
 deploy-command.txt
 deploy-commands.bat
 final-load-test.js
+
+# Temporary files
+q-dev-chat-*.md
+server.log
