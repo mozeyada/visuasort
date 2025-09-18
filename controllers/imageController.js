@@ -92,7 +92,7 @@ exports.uploadImage = async (req, res) => {
 exports.getImages = async (req, res) => {
   try {
     const { page = 1, limit = 10, sort = 'uploadDate', order = 'desc' } = req.query;
-    const images = dbService.getImages(req.user.username, { page: parseInt(page), limit: parseInt(limit), sort, order });
+    const images = await dbService.getImages(req.user.username, { page: parseInt(page), limit: parseInt(limit), sort, order });
     
     // Add S3 URLs for frontend
     const imagesWithUrls = await Promise.all(images.data.map(async (image) => {
@@ -183,14 +183,14 @@ exports.deleteImage = async (req, res) => {
   }
 };
 
-exports.searchImages = (req, res) => {
+exports.searchImages = async (req, res) => {
   try {
     const { query, page = 1, limit = 10, sort = 'uploadDate', order = 'desc' } = req.query;
     if (!query) {
       return res.status(400).json({ error: 'Missing query parameter' });
     }
 
-    const results = dbService.searchImages(query, req.user.username, { page: parseInt(page), limit: parseInt(limit), sort, order });
+    const results = await dbService.searchImages(query, req.user.username, { page: parseInt(page), limit: parseInt(limit), sort, order });
     res.json({
       data: results.data,
       pagination: results.pagination,
@@ -202,10 +202,10 @@ exports.searchImages = (req, res) => {
   }
 };
 
-exports.filterImages = (req, res) => {
+exports.filterImages = async (req, res) => {
   try {
     const { sizeRange, dateRange, captionCategory, owner, page = 1, limit = 10, sort = 'uploadDate', order = 'desc' } = req.query;
-    const results = dbService.filterImages({ sizeRange, dateRange, captionCategory, owner }, req.user.username, { page: parseInt(page), limit: parseInt(limit), sort, order });
+    const results = await dbService.filterImages({ sizeRange, dateRange, captionCategory, owner }, req.user.username, { page: parseInt(page), limit: parseInt(limit), sort, order });
     
     res.json({
       data: results.data,
@@ -218,11 +218,12 @@ exports.filterImages = (req, res) => {
   }
 };
 
-exports.getTagCategories = (req, res) => {
+exports.getTagCategories = async (req, res) => {
   try {
-    const categories = dbService.getTagCategories(req.user.username);
-    res.json(categories);
+    const categories = await dbService.getTagCategories(req.user.username);
+    res.json(categories || []);
   } catch (error) {
+    console.error('getTagCategories controller error:', error);
     res.status(500).json({ error: 'Failed to get categories' });
   }
 };

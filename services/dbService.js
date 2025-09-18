@@ -1,274 +1,340 @@
-const low = require('lowdb');
-const FileSync = require('lowdb/adapters/FileSync');
-const path = require('path');
+const DynamoDB = require("@aws-sdk/client-dynamodb");
+const DynamoDBLib = require("@aws-sdk/lib-dynamodb");
 
-const adapter = new FileSync(path.join(__dirname, '../data/db.json'));
-const db = low(adapter);
+class VisuaSortDynamoService {
+  constructor() {
+    const client = new DynamoDB.DynamoDBClient({ region: "ap-southeast-2" });
+    this.docClient = DynamoDBLib.DynamoDBDocumentClient.from(client);
+    this.tableName = "n11693860-visuasort-images";
+    this.qutUsername = "n11693860@qut.edu.au";
+  }
 
-db.defaults({ images: [] }).write();
+  async saveImage(imageData) {
+    const command = new DynamoDBLib.PutCommand({
+      TableName: this.tableName,
+      Item: {
+        "qut-username": this.qutUsername,
+        "imageId": `${imageData.owner}#${imageData.id}`,
+        ...imageData
+      }
+    });
 
-exports.saveImage = (imageData) => {
-  return db.get('images').push(imageData).write();
-};
+    try {
+      await this.docClient.send(command);
+      return imageData;
+    } catch (error) {
+      console.error('DynamoDB saveImage error:', error);
+      throw error;
+    }
+  }
 
-exports.getImages = (owner, options = {}) => {
-  const { page = 1, limit = 10, sort = 'uploadDate', order = 'desc' } = options;
-  
-  let images = db.get('images').filter({ owner }).value();
-  
-  // Apply sorting
-  images = images.sort((a, b) => {
-    let aVal = a[sort];
-    let bVal = b[sort];
+  async getImages(owner, options = {}) {
+    const { page = 1, limit = 10, sort = 'uploadDate', order = 'desc' } = options;
     
-    // Handle date sorting
-    if (sort === 'uploadDate') {
-      aVal = new Date(aVal);
-      bVal = new Date(bVal);
-    }
-    
-    // Handle size sorting
-    if (sort === 'size') {
-      aVal = parseInt(aVal) || 0;
-      bVal = parseInt(bVal) || 0;
-    }
-    
-    if (order === 'asc') {
-      return aVal > bVal ? 1 : -1;
-    } else {
-      return aVal < bVal ? 1 : -1;
-    }
-  });
-  
-  // Apply pagination
-  const total = images.length;
-  const startIndex = (page - 1) * limit;
-  const endIndex = startIndex + limit;
-  const paginatedImages = images.slice(startIndex, endIndex);
-  
-  return {
-    data: paginatedImages,
-    pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit),
-      hasNext: endIndex < total,
-      hasPrev: page > 1
-    }
-  };
-};
+    const command = new DynamoDBLib.QueryCommand({
+      TableName: this.tableName,
+      KeyConditionExpression: "#partitionKey = :username",
+      FilterExpression: "#owner = :owner",
+      ExpressionAttributeNames: {
+        "#partitionKey": "qut-username",
+        "#owner": "owner"
+      },
+      ExpressionAttributeValues: {
+        ":username": this.qutUsername,
+        ":owner": owner
+      }
+    });
 
-exports.deleteImage = (id) => {
-  return db.get('images').remove({ id }).write();
-};
+    try {
+      const response = await this.docClient.send(command);
+      const images = response.Items || [];
+      return this.applySortingAndPagination(images, { page, limit, sort, order });
+    } catch (error) {
+      console.error('DynamoDB getImages error:', error);
+      return { data: [], pagination: { page: 1, limit, total: 0, pages: 0, hasNext: false, hasPrev: false } };
+    }
+  }
 
-exports.updateImageTags = (id, tags) => {
-  return db.get('images')
-    .find({ id })
-    .assign({ tags })
-    .write();
-};
+  async getImageById(id) {
+    const command = new DynamoDBLib.ScanCommand({
+      TableName: this.tableName,
+      FilterExpression: "id = :id",
+      ExpressionAttributeValues: {
+        ":id": id
+      }
+    });
 
-exports.getImageById = (id) => {
-  return db.get('images').find({ id }).value();
-};
+    try {
+      const response = await this.docClient.send(command);
+      return response.Items && response.Items.length > 0 ? response.Items[0] : null;
+    } catch (error) {
+      console.error('DynamoDB getImageById error:', error);
+      return null;
+    }
+  }
 
-exports.searchImages = (query, owner, options = {}) => {
-  const { page = 1, limit = 10, sort = 'uploadDate', order = 'desc' } = options;
-  
-  let images = db.get('images')
-    .filter(img => {
-      if (img.owner !== owner) return false;
-      const searchTerm = query.toLowerCase();
+  async deleteImage(id) {
+    const image = await this.getImageById(id);
+    if (!image) return;
+
+    const command = new DynamoDBLib.DeleteCommand({
+      TableName: this.tableName,
+      Key: {
+        "qut-username": this.qutUsername,
+        "imageId": `${image.owner}#${image.id}`
+      }
+    });
+
+    try {
+      await this.docClient.send(command);
+    } catch (error) {
+      console.error('DynamoDB deleteImage error:', error);
+      throw error;
+    }
+  }
+
+  async updateImageTags(id, tags) {
+    const image = await this.getImageById(id);
+    if (!image) return;
+
+    const command = new DynamoDBLib.UpdateCommand({
+      TableName: this.tableName,
+      Key: {
+        "qut-username": this.qutUsername,
+        "imageId": `${image.owner}#${image.id}`
+      },
+      UpdateExpression: "SET tags = :tags",
+      ExpressionAttributeValues: {
+        ":tags": tags
+      }
+    });
+
+    try {
+      await this.docClient.send(command);
+    } catch (error) {
+      console.error('DynamoDB updateImageTags error:', error);
+      throw error;
+    }
+  }
+
+  async searchImages(query, owner, options = {}) {
+    const command = new DynamoDBLib.QueryCommand({
+      TableName: this.tableName,
+      KeyConditionExpression: "#partitionKey = :username",
+      FilterExpression: "#owner = :owner AND (contains(filename, :query) OR contains(tags, :query))",
+      ExpressionAttributeNames: {
+        "#partitionKey": "qut-username",
+        "#owner": "owner"
+      },
+      ExpressionAttributeValues: {
+        ":username": this.qutUsername,
+        ":owner": owner,
+        ":query": query.toLowerCase()
+      }
+    });
+
+    try {
+      const response = await this.docClient.send(command);
+      return this.applySortingAndPagination(response.Items || [], options);
+    } catch (error) {
+      console.error('DynamoDB searchImages error:', error);
+      return { data: [], pagination: { page: 1, limit: 10, total: 0, pages: 0, hasNext: false, hasPrev: false } };
+    }
+  }
+
+  async filterImages(filters, owner, options = {}) {
+    const command = new DynamoDBLib.QueryCommand({
+      TableName: this.tableName,
+      KeyConditionExpression: "#partitionKey = :username",
+      FilterExpression: "#owner = :owner",
+      ExpressionAttributeNames: {
+        "#partitionKey": "qut-username",
+        "#owner": "owner"
+      },
+      ExpressionAttributeValues: {
+        ":username": this.qutUsername,
+        ":owner": owner
+      }
+    });
+
+    try {
+      const response = await this.docClient.send(command);
+      let images = response.Items || [];
       
-      // Check filename
-      if (img.filename && img.filename.toLowerCase().includes(searchTerm)) return true;
-      
-      // Check tags (handle both string and array formats)
-      if (img.tags) {
-        if (Array.isArray(img.tags)) {
-          return img.tags.some(tag => tag.toLowerCase().includes(searchTerm));
-        } else if (typeof img.tags === 'string') {
-          return img.tags.toLowerCase().includes(searchTerm);
+      // Apply filters in memory (similar to LowDB approach)
+      images = images.filter(img => {
+        if (filters.sizeRange) {
+          const size = img.size || 0;
+          if (filters.sizeRange === 'small' && size > 1024 * 1024) return false;
+          if (filters.sizeRange === 'medium' && (size < 1024 * 1024 || size > 5 * 1024 * 1024)) return false;
+          if (filters.sizeRange === 'large' && size < 5 * 1024 * 1024) return false;
         }
-      }
-      
-      return false;
-    })
-    .value();
-    
-  // Apply sorting and pagination
-  return this.applySortingAndPagination(images, { page, limit, sort, order });
-};
-
-exports.filterImages = (filters, owner, options = {}) => {
-  const { page = 1, limit = 10, sort = 'uploadDate', order = 'desc' } = options;
-  
-  let images = db.get('images')
-    .filter(img => {
-      if (img.owner !== owner) return false;
-      
-      // Size filter
-      if (filters.sizeRange) {
-        const size = img.size || 0;
-        if (filters.sizeRange === 'small' && size > 1024 * 1024) return false; // >1MB
-        if (filters.sizeRange === 'medium' && (size < 1024 * 1024 || size > 5 * 1024 * 1024)) return false; // 1-5MB
-        if (filters.sizeRange === 'large' && size < 5 * 1024 * 1024) return false; // >5MB
-      }
-      
-      // Date filter
-      if (filters.dateRange && img.uploadDate) {
-        const uploadDate = new Date(img.uploadDate);
-        const now = new Date();
-        const daysDiff = (now - uploadDate) / (1000 * 60 * 60 * 24);
         
-        if (filters.dateRange === 'today' && daysDiff > 1) return false;
-        if (filters.dateRange === 'week' && daysDiff > 7) return false;
-        if (filters.dateRange === 'month' && daysDiff > 30) return false;
-      }
-      
-      // Tag category filter
-      if (filters.captionCategory && img.tags) {
-        const selectedCategory = filters.captionCategory.toLowerCase();
-        // Check if the selected category exists in the image's tags array
-        if (Array.isArray(img.tags)) {
-          if (!img.tags.some(tag => tag.toLowerCase().includes(selectedCategory))) return false;
+        if (filters.dateRange && img.uploadDate) {
+          const uploadDate = new Date(img.uploadDate);
+          const now = new Date();
+          const daysDiff = (now - uploadDate) / (1000 * 60 * 60 * 24);
+          
+          if (filters.dateRange === 'today' && daysDiff > 1) return false;
+          if (filters.dateRange === 'week' && daysDiff > 7) return false;
+          if (filters.dateRange === 'month' && daysDiff > 30) return false;
         }
-      }
+        
+        if (filters.captionCategory && img.tags) {
+          const selectedCategory = filters.captionCategory.toLowerCase();
+          if (Array.isArray(img.tags)) {
+            if (!img.tags.some(tag => tag.toLowerCase().includes(selectedCategory))) return false;
+          }
+        }
+        
+        return true;
+      });
       
-      // Owner filter
-      if (filters.owner && img.owner !== filters.owner) return false;
-      
-      return true;
-    })
-    .value();
-    
-  // Apply sorting and pagination
-  return this.applySortingAndPagination(images, { page, limit, sort, order });
-};
+      return this.applySortingAndPagination(images, options);
+    } catch (error) {
+      console.error('DynamoDB filterImages error:', error);
+      return { data: [], pagination: { page: 1, limit: 10, total: 0, pages: 0, hasNext: false, hasPrev: false } };
+    }
+  }
 
-exports.getTagCategories = (owner) => {
-  const images = db.get('images').filter({ owner }).value();
-  const categories = new Set();
-  
-  images.forEach(img => {
-    if (img.tags && Array.isArray(img.tags)) {
-      // Add each tag as category
-      img.tags.forEach(tag => {
-        const cleanTag = tag.trim().toLowerCase();
-        if (cleanTag) {
-          categories.add(cleanTag);
+  async getTagCategories(owner) {
+    try {
+      const command = new DynamoDBLib.QueryCommand({
+        TableName: this.tableName,
+        KeyConditionExpression: "#partitionKey = :username",
+        FilterExpression: "#owner = :owner",
+        ExpressionAttributeNames: {
+          "#partitionKey": "qut-username",
+          "#owner": "owner"
+        },
+        ExpressionAttributeValues: {
+          ":username": this.qutUsername,
+          ":owner": owner
         }
       });
-    }
-  });
-  
-  return Array.from(categories).sort();
-};
 
-// Admin function: Get all images from all users
-exports.getAllImages = (options = {}) => {
-  const { page = 1, limit = 10, sort = 'uploadDate', order = 'desc' } = options;
-  
-  let images = db.get('images').value();
-  
-  // Apply sorting
-  images = images.sort((a, b) => {
-    let aVal = a[sort];
-    let bVal = b[sort];
-    
-    if (sort === 'uploadDate') {
-      aVal = new Date(aVal);
-      bVal = new Date(bVal);
+      const response = await this.docClient.send(command);
+      const images = response.Items || [];
+      const categories = new Set();
+      
+      images.forEach(img => {
+        if (img.tags && Array.isArray(img.tags)) {
+          img.tags.forEach(tag => {
+            const cleanTag = tag.trim().toLowerCase();
+            if (cleanTag) {
+              categories.add(cleanTag);
+            }
+          });
+        }
+      });
+      
+      const result = Array.from(categories).sort();
+      console.log('getTagCategories result:', result);
+      return result;
+    } catch (error) {
+      console.error('DynamoDB getTagCategories error:', error);
+      return [];
     }
-    
-    if (sort === 'size') {
-      aVal = parseInt(aVal) || 0;
-      bVal = parseInt(bVal) || 0;
-    }
-    
-    if (order === 'asc') {
-      return aVal > bVal ? 1 : -1;
-    } else {
-      return aVal < bVal ? 1 : -1;
-    }
-  });
-  
-  // Apply pagination
-  const total = images.length;
-  const startIndex = (page - 1) * limit;
-  const endIndex = startIndex + limit;
-  const paginatedImages = images.slice(startIndex, endIndex);
-  
-  return {
-    data: paginatedImages,
-    pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit),
-      hasNext: endIndex < total,
-      hasPrev: page > 1
-    }
-  };
-};
+  }
 
-exports.updateImage = (id, updates) => {
-  return db.get('images')
-    .find({ id })
-    .assign(updates)
-    .write();
-};
+  async getAllImages(options = {}) {
+    const command = new DynamoDBLib.QueryCommand({
+      TableName: this.tableName,
+      KeyConditionExpression: "#partitionKey = :username",
+      ExpressionAttributeNames: {
+        "#partitionKey": "qut-username"
+      },
+      ExpressionAttributeValues: {
+        ":username": this.qutUsername
+      }
+    });
 
-exports.applySortingAndPagination = (images, options) => {
-  const { page = 1, limit = 10, sort = 'uploadDate', order = 'desc' } = options;
-  
-  // Apply sorting
-  const sortedImages = images.sort((a, b) => {
-    let aVal = a[sort];
-    let bVal = b[sort];
+    try {
+      const response = await this.docClient.send(command);
+      const images = response.Items || [];
+      return this.applySortingAndPagination(images, options);
+    } catch (error) {
+      console.error('DynamoDB getAllImages error:', error);
+      return { data: [], pagination: { page: 1, limit: 10, total: 0, pages: 0, hasNext: false, hasPrev: false } };
+    }
+  }
+
+  async updateImage(id, updates) {
+    const image = await this.getImageById(id);
+    if (!image) return;
+
+    const updateExpressions = [];
+    const expressionAttributeValues = {};
     
-    // Handle date sorting
-    if (sort === 'uploadDate') {
-      aVal = new Date(aVal);
-      bVal = new Date(bVal);
+    Object.keys(updates).forEach(key => {
+      updateExpressions.push(`${key} = :${key}`);
+      expressionAttributeValues[`:${key}`] = updates[key];
+    });
+
+    const command = new DynamoDBLib.UpdateCommand({
+      TableName: this.tableName,
+      Key: {
+        "qut-username": this.qutUsername,
+        "imageId": `${image.owner}#${image.id}`
+      },
+      UpdateExpression: `SET ${updateExpressions.join(', ')}`,
+      ExpressionAttributeValues: expressionAttributeValues
+    });
+
+    try {
+      await this.docClient.send(command);
+    } catch (error) {
+      console.error('DynamoDB updateImage error:', error);
+      throw error;
     }
+  }
+
+  applySortingAndPagination(images, options) {
+    const { page = 1, limit = 10, sort = 'uploadDate', order = 'desc' } = options;
     
-    // Handle size sorting
-    if (sort === 'size') {
-      aVal = parseInt(aVal) || 0;
-      bVal = parseInt(bVal) || 0;
-    }
+    const sortedImages = images.sort((a, b) => {
+      let aVal = a[sort];
+      let bVal = b[sort];
+      
+      if (sort === 'uploadDate') {
+        aVal = new Date(aVal);
+        bVal = new Date(bVal);
+      }
+      
+      if (sort === 'size') {
+        aVal = parseInt(aVal) || 0;
+        bVal = parseInt(bVal) || 0;
+      }
+      
+      if (sort === 'filename') {
+        aVal = (aVal || '').toLowerCase();
+        bVal = (bVal || '').toLowerCase();
+      }
+      
+      if (order === 'asc') {
+        return aVal > bVal ? 1 : -1;
+      } else {
+        return aVal < bVal ? 1 : -1;
+      }
+    });
     
-    // Handle filename sorting
-    if (sort === 'filename') {
-      aVal = (aVal || '').toLowerCase();
-      bVal = (bVal || '').toLowerCase();
-    }
+    const total = sortedImages.length;
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    const paginatedImages = sortedImages.slice(startIndex, endIndex);
     
-    if (order === 'asc') {
-      return aVal > bVal ? 1 : -1;
-    } else {
-      return aVal < bVal ? 1 : -1;
-    }
-  });
-  
-  // Apply pagination
-  const total = sortedImages.length;
-  const startIndex = (page - 1) * limit;
-  const endIndex = startIndex + limit;
-  const paginatedImages = sortedImages.slice(startIndex, endIndex);
-  
-  return {
-    data: paginatedImages,
-    pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit),
-      hasNext: endIndex < total,
-      hasPrev: page > 1
-    }
-  };
-};
+    return {
+      data: paginatedImages,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / limit),
+        hasNext: endIndex < total,
+        hasPrev: page > 1
+      }
+    };
+  }
+}
+
+module.exports = new VisuaSortDynamoService();
