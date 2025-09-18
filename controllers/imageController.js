@@ -223,7 +223,7 @@ exports.getTagCategories = async (req, res) => {
     const categories = await dbService.getTagCategories(req.user.username);
     res.json(categories || []);
   } catch (error) {
-    console.error('getTagCategories controller error:', error);
+    console.error('Failed to retrieve tag categories:', error);
     res.status(500).json({ error: 'Failed to get categories' });
   }
 };

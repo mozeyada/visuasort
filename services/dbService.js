@@ -1,11 +1,18 @@
+/**
+ * DynamoDB Service for Visuasort Image Management
+ * Implements QUT CAB432 requirements with qut-username partition key
+ * Handles all database operations for image metadata storage
+ */
 const DynamoDB = require("@aws-sdk/client-dynamodb");
 const DynamoDBLib = require("@aws-sdk/lib-dynamodb");
 
 class VisuaSortDynamoService {
   constructor() {
+    // Initialize DynamoDB client for ap-southeast-2 region
     const client = new DynamoDB.DynamoDBClient({ region: "ap-southeast-2" });
     this.docClient = DynamoDBLib.DynamoDBDocumentClient.from(client);
     this.tableName = "n11693860-visuasort-images";
+    // QUT CAB432 requirement: partition key must be qut-username
     this.qutUsername = "n11693860@qut.edu.au";
   }
 
@@ -13,8 +20,8 @@ class VisuaSortDynamoService {
     const command = new DynamoDBLib.PutCommand({
       TableName: this.tableName,
       Item: {
-        "qut-username": this.qutUsername,
-        "imageId": `${imageData.owner}#${imageData.id}`,
+        "qut-username": this.qutUsername, // Required partition key for QUT account
+        "imageId": `${imageData.owner}#${imageData.id}`, // Composite sort key for user separation
         ...imageData
       }
     });
@@ -50,7 +57,7 @@ class VisuaSortDynamoService {
       const images = response.Items || [];
       return this.applySortingAndPagination(images, { page, limit, sort, order });
     } catch (error) {
-      console.error('DynamoDB getImages error:', error);
+      console.error('Database query failed for getImages:', error);
       return { data: [], pagination: { page: 1, limit, total: 0, pages: 0, hasNext: false, hasPrev: false } };
     }
   }
@@ -68,7 +75,7 @@ class VisuaSortDynamoService {
       const response = await this.docClient.send(command);
       return response.Items && response.Items.length > 0 ? response.Items[0] : null;
     } catch (error) {
-      console.error('DynamoDB getImageById error:', error);
+      console.error('Database query failed for getImageById:', error);
       return null;
     }
   }
@@ -88,7 +95,7 @@ class VisuaSortDynamoService {
     try {
       await this.docClient.send(command);
     } catch (error) {
-      console.error('DynamoDB deleteImage error:', error);
+      console.error('Database delete operation failed:', error);
       throw error;
     }
   }
@@ -112,7 +119,7 @@ class VisuaSortDynamoService {
     try {
       await this.docClient.send(command);
     } catch (error) {
-      console.error('DynamoDB updateImageTags error:', error);
+      console.error('Database update operation failed for tags:', error);
       throw error;
     }
   }
@@ -137,7 +144,7 @@ class VisuaSortDynamoService {
       const response = await this.docClient.send(command);
       return this.applySortingAndPagination(response.Items || [], options);
     } catch (error) {
-      console.error('DynamoDB searchImages error:', error);
+      console.error('Database search operation failed:', error);
       return { data: [], pagination: { page: 1, limit: 10, total: 0, pages: 0, hasNext: false, hasPrev: false } };
     }
   }
@@ -161,7 +168,7 @@ class VisuaSortDynamoService {
       const response = await this.docClient.send(command);
       let images = response.Items || [];
       
-      // Apply filters in memory (similar to LowDB approach)
+      // Apply client-side filtering for complex queries not supported by DynamoDB FilterExpression
       images = images.filter(img => {
         if (filters.sizeRange) {
           const size = img.size || 0;
@@ -192,7 +199,7 @@ class VisuaSortDynamoService {
       
       return this.applySortingAndPagination(images, options);
     } catch (error) {
-      console.error('DynamoDB filterImages error:', error);
+      console.error('Database filter operation failed:', error);
       return { data: [], pagination: { page: 1, limit: 10, total: 0, pages: 0, hasNext: false, hasPrev: false } };
     }
   }
@@ -229,10 +236,10 @@ class VisuaSortDynamoService {
       });
       
       const result = Array.from(categories).sort();
-      console.log('getTagCategories result:', result);
+      // Debug: Log categories for verification
       return result;
     } catch (error) {
-      console.error('DynamoDB getTagCategories error:', error);
+      console.error('Database query failed for categories:', error);
       return [];
     }
   }
@@ -254,7 +261,7 @@ class VisuaSortDynamoService {
       const images = response.Items || [];
       return this.applySortingAndPagination(images, options);
     } catch (error) {
-      console.error('DynamoDB getAllImages error:', error);
+      console.error('Database query failed for getAllImages:', error);
       return { data: [], pagination: { page: 1, limit: 10, total: 0, pages: 0, hasNext: false, hasPrev: false } };
     }
   }
@@ -284,7 +291,7 @@ class VisuaSortDynamoService {
     try {
       await this.docClient.send(command);
     } catch (error) {
-      console.error('DynamoDB updateImage error:', error);
+      console.error('Database update operation failed:', error);
       throw error;
     }
   }
