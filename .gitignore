@@ -12,3 +12,14 @@ deploy-command.txt
 deploy-commands.bat
 final-load-test.js
 data/db.json
+
+# Problematic files
+visuasort-submission/
+frontend/build/
+.amazonq/
+SUBMISSION_CHECKLIST.md
+VIDEO_SCRIPT_FULL_MARKS.md
+DEPLOYMENT.md
+deploy-command.txt
+deploy-commands.bat
+final-load-test.js
