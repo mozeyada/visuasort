@@ -1,5 +1,6 @@
 node_modules/
 .env
+.env.local
 uploads/*.jpg
 uploads/*.png
 uploads/*.webp
@@ -8,3 +9,6 @@ tests/stage_*.jpg
 visuasort@*
 aws-deploy.sh
 deploy-command.txt
+deploy-commands.bat
+final-load-test.js
+data/db.json
