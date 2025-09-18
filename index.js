@@ -16,7 +16,7 @@ app.use(helmet.contentSecurityPolicy({
     defaultSrc: ["'self'"],
     scriptSrc: ["'self'"],
     styleSrc: ["'self'", "'unsafe-inline'"],
-    imgSrc: ["'self'", "data:"],
+    imgSrc: ["'self'", "data:", "https://*.s3.ap-southeast-2.amazonaws.com"],
     connectSrc: ["'self'"],
     fontSrc: ["'self'"],
     objectSrc: ["'none'"],

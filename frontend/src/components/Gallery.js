@@ -154,7 +154,7 @@ const Gallery = ({ token, user, onLogout }) => {
 
   const handleDownload = (image) => {
     const link = document.createElement('a');
-    link.href = `/uploads/${image.filename}`;
+    link.href = image.enhancedUrl || image.originalUrl;
     link.download = image.filename;
     link.click();
   };

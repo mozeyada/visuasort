@@ -101,7 +101,7 @@ const Modal = ({ image, onClose, mode = 'view', onReEnhance }) => {
         &times;
       </span>
       <img
-        src={image.enhancedPath ? `/${image.enhancedPath}` : `/uploads/${image.filename}`}
+        src={image.enhancedUrl || image.originalUrl}
         alt={image.displayName || image.filename}
         className="modal-content"
         onClick={(e) => e.stopPropagation()}

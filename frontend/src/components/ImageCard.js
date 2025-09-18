@@ -12,10 +12,8 @@ const ImageCard = ({ image, onClick, onDownload, onDelete, onReEnhance, showOwne
     return tags === 'processing...' ? '🔄 AI Processing...' : tags;
   };
 
-  // Use enhanced path if available, otherwise fallback to original
-  const thumbnailSrc = image.thumbnailPath 
-    ? `/${image.thumbnailPath}` 
-    : `/uploads/${image.filename}`;
+  // Use S3 URLs from backend
+  const thumbnailSrc = image.thumbnailUrl || image.enhancedUrl || image.originalUrl;
 
   return (
     <div className="image-card">
@@ -25,7 +23,7 @@ const ImageCard = ({ image, onClick, onDownload, onDelete, onReEnhance, showOwne
         className="thumbnail"
         onClick={onClick}
         onError={(e) => {
-          e.target.src = `/uploads/${image.filename}`;
+          e.target.src = image.originalUrl || image.enhancedUrl;
         }}
       />
       
