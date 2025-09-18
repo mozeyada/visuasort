@@ -1,7 +1,7 @@
 const imageService = require('../services/imageService');
 const aiService = require('../services/aiService');
 const dbService = require('../services/dbService');
-const fs = require('fs');
+const s3Service = require('../services/s3Service');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
@@ -13,79 +13,79 @@ exports.uploadImage = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No image file provided' });
     }
-
-    // Validate file path for security
-    const uploadsDir = path.resolve('uploads');
-    const filePath = path.resolve(req.file.path);
-    if (!filePath.startsWith(uploadsDir)) {
-      return res.status(400).json({ error: 'Invalid file path' });
-    }
+    
+    const userId = req.user.username;
+    const imageId = Date.now().toString().slice(-6);
     
     // Get processing options from request
     const enhanceOptions = {
       autoEnhance: req.body.autoEnhance === 'true',
       addWatermark: req.body.addWatermark === 'true',
       applyFilter: req.body.applyFilter || 'none',
-      createThumbnail: true // Always create thumbnail
+      createThumbnail: true
     };
     
-    // CPU-intensive: Enhanced image processing
-    const processedImages = await imageService.processImageEnhanced(req.file.path, enhanceOptions);
+    // Upload original to S3
+    const originalKey = await s3Service.uploadImage(
+      userId, 
+      imageId, 
+      req.file.buffer, 
+      'original',
+      'jpg'
+    );
     
-    const stats = fs.statSync(req.file.path);
+    // Process image with S3
+    const processedImages = await imageService.processImageEnhancedS3(
+      originalKey, 
+      userId, 
+      imageId, 
+      enhanceOptions
+    );
     
-    // Check if AI tagging is requested
+    const fileSize = req.file.size;
     const useAI = req.body.useAI === 'true';
     
-    // Use enhanced image as main image if processing was applied
-    const hasEnhancements = enhanceOptions.autoEnhance || enhanceOptions.addWatermark || enhanceOptions.applyFilter !== 'none';
-    const mainImagePath = hasEnhancements ? processedImages.enhancedPath : req.file.path;
-    const mainImageFilename = hasEnhancements ? path.basename(processedImages.enhancedPath) : req.file.filename;
-    
-    // Create display name showing applied enhancements
-    const originalName = path.basename(req.file.originalname, path.extname(req.file.originalname));
+    // Create display name
+    const originalFilename = path.basename(req.file.originalname, path.extname(req.file.originalname));
     const enhancements = [];
     if (enhanceOptions.autoEnhance) enhancements.push('Enhanced');
     if (enhanceOptions.applyFilter !== 'none') enhancements.push(enhanceOptions.applyFilter.charAt(0).toUpperCase() + enhanceOptions.applyFilter.slice(1));
     if (enhanceOptions.addWatermark) enhancements.push('Watermarked');
-    const displayName = enhancements.length > 0 ? `${originalName} (${enhancements.join(', ')})` : originalName;
+    const displayName = enhancements.length > 0 ? `${originalFilename} (${enhancements.join(', ')})` : originalFilename;
     
-    // Save metadata with enhanced image path
     const metadata = {
-      id: Date.now().toString(),
-      filename: mainImageFilename,
+      id: imageId,
+      filename: req.file.originalname,
       displayName,
-      originalPath: req.file.path,
-      enhancedPath: processedImages.enhancedPath,
-      thumbnailPath: processedImages.thumbnailPath,
-      webPath: processedImages.webPath,
-      tags: useAI ? ['processing...'] : ['Personal'], // Default to Personal
+      originalKey: originalKey,
+      enhancedKey: processedImages.enhancedKey,
+      thumbnailKey: processedImages.thumbnailKey,
+      webKey: processedImages.webKey,
+      tags: useAI ? ['processing...'] : ['Personal'],
       uploadDate: new Date().toISOString(),
-      size: stats.size,
+      size: fileSize,
       owner: req.user.username,
-      hasEnhancements
+      hasEnhancements: enhanceOptions.autoEnhance || enhanceOptions.addWatermark || enhanceOptions.applyFilter !== 'none'
     };
 
     dbService.saveImage(metadata);
-    
-    // Send immediate response
     res.status(202).json(metadata);
     
-    // Only do AI processing if requested
+    // AI processing if requested
     if (useAI) {
-      aiService.generateTagsWithFallback(req.file.path)
+      s3Service.getImageBuffer(originalKey)
+        .then(buffer => aiService.generateTagsWithFallback(buffer))
         .then(tags => {
           dbService.updateImageTags(metadata.id, tags.length > 0 ? tags : ['no_tags_available']);
-          console.log(`AI tags updated for ${encodeURIComponent(metadata.filename)}:`, tags.map(tag => encodeURIComponent(tag)));
         })
         .catch(error => {
-          console.error(`AI tagging failed for image ${encodeURIComponent(metadata.filename)}:`, error.message);
+          console.error(`AI tagging failed:`, error.message);
           dbService.updateImageTags(metadata.id, ['tagging_failed']);
         });
     }
   } catch (error) {
     console.error('Upload error:', error.message);
-    res.status(500).json({ error: 'Upload failed' });
+    res.status(500).json({ error: error.message });
   }
 };
 
@@ -94,8 +94,26 @@ exports.getImages = async (req, res) => {
     const { page = 1, limit = 10, sort = 'uploadDate', order = 'desc' } = req.query;
     const images = dbService.getImages(req.user.username, { page: parseInt(page), limit: parseInt(limit), sort, order });
     
+    // Add S3 URLs for frontend
+    const imagesWithUrls = await Promise.all(images.data.map(async (image) => {
+      const imageWithUrls = { ...image };
+      if (image.originalKey) {
+        imageWithUrls.originalUrl = await s3Service.getPresignedUrl(image.originalKey);
+      }
+      if (image.enhancedKey) {
+        imageWithUrls.enhancedUrl = await s3Service.getPresignedUrl(image.enhancedKey);
+      }
+      if (image.thumbnailKey) {
+        imageWithUrls.thumbnailUrl = await s3Service.getPresignedUrl(image.thumbnailKey);
+      }
+      if (image.webKey) {
+        imageWithUrls.webUrl = await s3Service.getPresignedUrl(image.webKey);
+      }
+      return imageWithUrls;
+    }));
+    
     res.json({
-      data: images.data,
+      data: imagesWithUrls,
       pagination: images.pagination,
       sort: { field: sort, order }
     });
@@ -110,7 +128,23 @@ exports.getImageById = async (req, res) => {
     if (!image || image.owner !== req.user.username) {
       return res.status(404).json({ error: 'Image not found' });
     }
-    res.json(image);
+    
+    // Add S3 URLs
+    const imageWithUrls = { ...image };
+    if (image.originalKey) {
+      imageWithUrls.originalUrl = await s3Service.getPresignedUrl(image.originalKey);
+    }
+    if (image.enhancedKey) {
+      imageWithUrls.enhancedUrl = await s3Service.getPresignedUrl(image.enhancedKey);
+    }
+    if (image.thumbnailKey) {
+      imageWithUrls.thumbnailUrl = await s3Service.getPresignedUrl(image.thumbnailKey);
+    }
+    if (image.webKey) {
+      imageWithUrls.webUrl = await s3Service.getPresignedUrl(image.webKey);
+    }
+    
+    res.json(imageWithUrls);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch image' });
   }
@@ -123,24 +157,22 @@ exports.deleteImage = async (req, res) => {
       return res.status(404).json({ error: 'Image not found' });
     }
     
-    // Delete files with path sanitization
-    const uploadsDir = path.resolve('uploads');
-    
+    // Delete from S3 if using S3 storage
     try {
-      // Sanitize and validate file paths
-      const mainFilePath = path.resolve(uploadsDir, path.basename(image.filename));
-      if (mainFilePath.startsWith(uploadsDir)) {
-        fs.unlinkSync(mainFilePath);
+      if (image.originalKey) {
+        await s3Service.deleteImage(image.originalKey);
       }
-      
-      if (image.thumbnailPath) {
-        const thumbPath = path.resolve(uploadsDir, path.basename(image.thumbnailPath));
-        if (thumbPath.startsWith(uploadsDir)) {
-          fs.unlinkSync(thumbPath);
-        }
+      if (image.enhancedKey) {
+        await s3Service.deleteImage(image.enhancedKey);
+      }
+      if (image.thumbnailKey) {
+        await s3Service.deleteImage(image.thumbnailKey);
+      }
+      if (image.webKey) {
+        await s3Service.deleteImage(image.webKey);
       }
     } catch (err) {
-      console.log('File deletion warning:', err.message);
+      console.log('S3 deletion warning:', err.message);
     }
     
     // Delete from database
@@ -205,8 +237,26 @@ exports.getAllImagesAdmin = async (req, res) => {
     const { page = 1, limit = 10, sort = 'uploadDate', order = 'desc' } = req.query;
     const images = dbService.getAllImages({ page: parseInt(page), limit: parseInt(limit), sort, order });
     
+    // Add S3 URLs for admin view
+    const imagesWithUrls = await Promise.all(images.data.map(async (image) => {
+      const imageWithUrls = { ...image };
+      if (image.originalKey) {
+        imageWithUrls.originalUrl = await s3Service.getPresignedUrl(image.originalKey);
+      }
+      if (image.enhancedKey) {
+        imageWithUrls.enhancedUrl = await s3Service.getPresignedUrl(image.enhancedKey);
+      }
+      if (image.thumbnailKey) {
+        imageWithUrls.thumbnailUrl = await s3Service.getPresignedUrl(image.thumbnailKey);
+      }
+      if (image.webKey) {
+        imageWithUrls.webUrl = await s3Service.getPresignedUrl(image.webKey);
+      }
+      return imageWithUrls;
+    }));
+    
     res.json({
-      data: images.data,
+      data: imagesWithUrls,
       pagination: images.pagination,
       sort: { field: sort, order }
     });
@@ -227,23 +277,22 @@ exports.deleteImageAdmin = async (req, res) => {
       return res.status(404).json({ error: 'Image not found' });
     }
     
-    // Delete files with path sanitization
-    const uploadsDir = path.resolve('uploads');
-    
+    // Delete from S3 if using S3 storage
     try {
-      const mainFilePath = path.resolve(uploadsDir, path.basename(image.filename));
-      if (mainFilePath.startsWith(uploadsDir)) {
-        fs.unlinkSync(mainFilePath);
+      if (image.originalKey) {
+        await s3Service.deleteImage(image.originalKey);
       }
-      
-      if (image.thumbnailPath) {
-        const thumbPath = path.resolve(uploadsDir, path.basename(image.thumbnailPath));
-        if (thumbPath.startsWith(uploadsDir)) {
-          fs.unlinkSync(thumbPath);
-        }
+      if (image.enhancedKey) {
+        await s3Service.deleteImage(image.enhancedKey);
+      }
+      if (image.thumbnailKey) {
+        await s3Service.deleteImage(image.thumbnailKey);
+      }
+      if (image.webKey) {
+        await s3Service.deleteImage(image.webKey);
       }
     } catch (err) {
-      console.log('File deletion warning:', err.message);
+      console.log('S3 deletion warning:', err.message);
     }
     
     dbService.deleteImage(req.params.id);
@@ -263,19 +312,21 @@ exports.processImage = async (req, res) => {
       return res.status(404).json({ error: 'Image not found' });
     }
     
-    // Trigger CPU-intensive processing
-    const originalPath = path.join('uploads', image.filename);
-    if (!fs.existsSync(originalPath)) {
-      return res.status(404).json({ error: 'Image file not found' });
+    if (!image.originalKey) {
+      return res.status(404).json({ error: 'Image not found in S3' });
     }
     
-    // Intensive processing - multiple formats
-    const processedImages = await imageService.processImage(originalPath);
+    // Get image from S3 and process
+    const imageBuffer = await s3Service.getImageBuffer(image.originalKey);
+    await imageService.processImageEnhancedBuffer(imageBuffer, {
+      autoEnhance: true,
+      addWatermark: true,
+      applyFilter: 'dramatic'
+    });
     
     res.json({ 
       message: 'Processing complete',
-      imageId,
-      processed: processedImages
+      imageId
     });
     
   } catch (error) {
@@ -358,18 +409,17 @@ exports.stageImage = (req, res) => {
     return res.status(400).json({ message: 'No image file provided.' });
   }
   const imageId = uuidv4();
-  // Save file with imageId as name so we can find it later
-  const stagedPath = path.join('uploads', `staged_${imageId}.jpg`);
-  fs.renameSync(req.file.path, stagedPath);
+  // Store buffer in memory for later processing
+  stagedFiles[imageId] = req.file.buffer;
   res.status(201).json({ imageId });
 };
 
 // Load test processing endpoint
 exports.processStagedImage = async (req, res) => {
   const { imageId } = req.params;
-  const filePath = path.join('uploads', `staged_${imageId}.jpg`);
+  const imageBuffer = stagedFiles[imageId];
   
-  if (!fs.existsSync(filePath)) {
+  if (!imageBuffer) {
     return res.status(404).json({ message: 'Staged image not found.' });
   }
   
@@ -381,7 +431,7 @@ exports.processStagedImage = async (req, res) => {
       createThumbnail: true
     };
     
-    await imageService.processImageEnhanced(filePath, enhanceOptions);
+    await imageService.processImageEnhancedBuffer(imageBuffer, enhanceOptions);
     
     // Don't delete the staged file - keep it for multiple processing requests (load testing)
     
@@ -405,12 +455,9 @@ exports.reEnhanceImage = async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
     
-    const originalPath = originalImage.originalPath || path.join('uploads', originalImage.filename);
-    if (!fs.existsSync(originalPath)) {
-      return res.status(404).json({ error: 'Original image file not found' });
+    if (!originalImage.originalKey) {
+      return res.status(404).json({ error: 'Original image not found in S3' });
     }
-    
-    console.log('Received options:', { autoEnhance, addWatermark, applyFilter });
     
     const enhanceOptions = {
       autoEnhance: Boolean(autoEnhance),
@@ -419,16 +466,19 @@ exports.reEnhanceImage = async (req, res) => {
       createThumbnail: true
     };
     
-    console.log('Processed options:', enhanceOptions);
+    const userId = originalImage.owner;
+    const newImageId = Date.now().toString();
     
-    const processedImages = await imageService.processImageEnhanced(originalPath, enhanceOptions);
+    // Process with S3
+    const processedImages = await imageService.processImageEnhancedS3(
+      originalImage.originalKey,
+      userId,
+      newImageId,
+      enhanceOptions
+    );
     
-    // Extract clean original name
-    const originalFilename = originalImage.originalPath ? 
-      path.basename(originalImage.originalPath, path.extname(originalImage.originalPath)) :
-      path.basename(originalImage.filename, path.extname(originalImage.filename));
-    
-    // Remove timestamp prefix to get clean name
+    // Create display name
+    const originalFilename = path.basename(originalImage.filename, path.extname(originalImage.filename));
     const cleanName = originalFilename.replace(/^\d+-/, '');
     
     const enhancements = [];
@@ -441,25 +491,21 @@ exports.reEnhanceImage = async (req, res) => {
     
     const displayName = enhancements.length > 0 ? `${cleanName} (${enhancements.join(', ')})` : cleanName;
     
-    console.log('Generated display name:', displayName);
-    
-    // Create NEW image entry instead of updating existing
+    // Create new S3-based image entry
     const newImageMetadata = {
-      id: Date.now().toString(),
-      filename: path.basename(processedImages.enhancedPath),
+      id: newImageId,
+      filename: originalImage.filename,
       displayName,
-      originalPath: originalImage.originalPath || `uploads/${originalImage.filename}`, // Link to same original
-      enhancedPath: processedImages.enhancedPath,
-      thumbnailPath: processedImages.thumbnailPath,
-      webPath: processedImages.webPath,
-      tags: originalImage.tags, // Copy tags from original
+      originalKey: originalImage.originalKey,
+      enhancedKey: processedImages.enhancedKey,
+      thumbnailKey: processedImages.thumbnailKey,
+      webKey: processedImages.webKey,
+      tags: originalImage.tags,
       uploadDate: new Date().toISOString(),
       size: originalImage.size,
       owner: originalImage.owner,
       hasEnhancements: true
     };
-    
-    console.log('Saving new image metadata:', newImageMetadata);
     
     dbService.saveImage(newImageMetadata);
     
@@ -467,6 +513,49 @@ exports.reEnhanceImage = async (req, res) => {
   } catch (error) {
     console.error('Re-enhance error:', error);
     res.status(500).json({ error: 'Failed to re-enhance image' });
+  }
+};
+
+// Get pre-signed URL for direct client upload
+exports.getPresignedUploadUrl = async (req, res) => {
+  try {
+    const { filename, contentType } = req.body;
+    const userId = req.user.username;
+    const imageId = Date.now().toString();
+    
+    const key = `images/${userId}/${imageId}/original.jpg`;
+    
+    const uploadUrl = await s3Service.getPresignedUploadUrl(key, contentType);
+    
+    res.json({
+      uploadUrl,
+      key,
+      imageId
+    });
+  } catch (error) {
+    console.error('Presigned upload URL error:', error);
+    res.status(500).json({ error: 'Failed to generate upload URL' });
+  }
+};
+
+// Get pre-signed URL for image download
+exports.getPresignedDownloadUrl = async (req, res) => {
+  try {
+    const image = dbService.getImageById(req.params.id);
+    if (!image || image.owner !== req.user.username) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+    
+    if (!image.originalKey) {
+      return res.status(404).json({ error: 'Image not found in S3' });
+    }
+    
+    const downloadUrl = await s3Service.getPresignedUrl(image.originalKey, 3600);
+    
+    res.json({ downloadUrl });
+  } catch (error) {
+    console.error('Presigned download URL error:', error);
+    res.status(500).json({ error: 'Failed to generate download URL' });
   }
 };
 

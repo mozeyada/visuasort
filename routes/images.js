@@ -6,12 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 
 const router = express.Router();
 
-const storage = multer.diskStorage({
-  destination: 'uploads/',
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + '-' + file.originalname);
-  }
-});
+const storage = multer.memoryStorage();
 
 const upload = multer({ 
   storage,
@@ -55,5 +50,9 @@ router.put('/:id', authMiddleware, imageController.updateImage);
 router.patch('/:id', authMiddleware, imageController.patchImage);
 router.get('/:id', authMiddleware, imageController.getImageById);
 router.delete('/:id', authMiddleware, imageController.deleteImage);
+
+// Pre-signed URL endpoints for Assessment 2
+router.post('/presigned-upload', authMiddleware, imageController.getPresignedUploadUrl);
+router.get('/:id/presigned-url', authMiddleware, imageController.getPresignedDownloadUrl);
 
 module.exports = router;

@@ -1,6 +1,5 @@
 require('dotenv').config();
 const axios = require('axios');
-const fs = require('fs');
 const FormData = require('form-data');
 
 // Validate required environment variables
@@ -17,17 +16,17 @@ if (!process.env.AI_API_KEY) {
  * Priority 2: Hugging Face API (fallback)
  * Priority 3: Empty array (graceful failure)
  */
-exports.generateTagsWithFallback = async (imagePath) => {
+exports.generateTagsWithFallback = async (imageBuffer) => {
   // Validate input
-  if (!imagePath || !fs.existsSync(imagePath)) {
-    console.log('Invalid image path provided');
+  if (!imageBuffer || !Buffer.isBuffer(imageBuffer)) {
+    console.log('Invalid image buffer provided');
     return [];
   }
 
   // Try Imagga API first (Priority 1)
   try {
     console.log('Attempting Imagga API (Priority 1)...');
-    const imaggaTags = await callImaggaAPI(imagePath);
+    const imaggaTags = await callImaggaAPIBuffer(imageBuffer);
     console.log('Imagga API succeeded:', imaggaTags);
     return imaggaTags;
   } catch (error) {
@@ -37,7 +36,7 @@ exports.generateTagsWithFallback = async (imagePath) => {
   // Fallback to Hugging Face API (Priority 2)
   try {
     console.log('Falling back to Hugging Face API (Priority 2)...');
-    const huggingFaceTags = await callHuggingFaceAPI(imagePath);
+    const huggingFaceTags = await callHuggingFaceAPIBuffer(imageBuffer);
     console.log('Hugging Face API succeeded:', huggingFaceTags);
     return huggingFaceTags;
   } catch (error) {
@@ -50,11 +49,9 @@ exports.generateTagsWithFallback = async (imagePath) => {
 };
 
 /**
- * Call Imagga API for image tagging
+ * Call Imagga API for image tagging with buffer
  */
-async function callImaggaAPI(imagePath) {
-  const imageBuffer = fs.readFileSync(imagePath);
-  
+async function callImaggaAPIBuffer(imageBuffer) {
   // Create form data for multipart upload
   const form = new FormData();
   form.append('image', imageBuffer, { filename: 'image.jpg' });
@@ -79,11 +76,9 @@ async function callImaggaAPI(imagePath) {
 }
 
 /**
- * Call Hugging Face API for image classification
+ * Call Hugging Face API for image classification with buffer
  */
-async function callHuggingFaceAPI(imagePath) {
-  const imageBuffer = fs.readFileSync(imagePath);
-  
+async function callHuggingFaceAPIBuffer(imageBuffer) {
   const response = await axios.post(process.env.AI_API_URL, imageBuffer, {
     headers: {
       'Authorization': `Bearer ${process.env.AI_API_KEY}`,

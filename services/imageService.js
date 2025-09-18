@@ -1,6 +1,4 @@
 const sharp = require('sharp');
-const path = require('path');
-const fs = require('fs');
 
 // Optimize Sharp for t3.micro (2 vCPUs)
 sharp.concurrency(2);
@@ -178,80 +176,76 @@ const addWatermark = async (inputBuffer, watermarkText = 'VISUASORT') => {
   return result;
 };
 
-// Enhanced processing with professional features
-exports.processImageEnhanced = async (imagePath, options = {}) => {
-  console.log('Processing options:', options);
+
+
+// S3-compatible processing with buffers
+exports.processImageEnhancedS3 = async (originalKey, userId, imageId, options = {}) => {
+  const s3Service = require('./s3Service');
   
-  const inputBuffer = fs.readFileSync(imagePath);
-  const originalFilename = path.basename(imagePath, path.extname(imagePath));
+  // Get original image from S3
+  const inputBuffer = await s3Service.getImageBuffer(originalKey);
   
-  // Clean filename - remove existing timestamp if present
-  const cleanFilename = originalFilename.replace(/^\d+-/, '');
-  const timestamp = Date.now();
-  const filename = `${timestamp}-${cleanFilename}`;
-  const uploadsDir = 'uploads';
-  
-  // Start with heavy initial processing to maximize CPU load
+  // Start with heavy initial processing
   let processedBuffer = await sharp(inputBuffer)
     .rotate() // EXIF orientation
-    .resize(2200, 2200, { fit: 'inside', withoutEnlargement: false }) // Force larger processing
-    .blur(3) // Heavy initial blur for more CPU work
-    .sharpen(2, 1, 3) // Heavy initial sharpening
-    .normalize() // Histogram normalization
+    .resize(2200, 2200, { fit: 'inside', withoutEnlargement: false })
+    .blur(3)
+    .sharpen(2, 1, 3)
+    .normalize()
     .toBuffer();
   
-  const results = {};
-  
   if (options.autoEnhance) {
-    console.log('Applying auto-enhancement...');
     processedBuffer = await autoEnhance(processedBuffer);
   }
   
   if (options.applyFilter && options.applyFilter !== 'none') {
-    console.log(`Applying ${options.applyFilter} filter...`);
     processedBuffer = await applyFilter(processedBuffer, options.applyFilter);
   }
   
   if (options.addWatermark) {
-    console.log('Adding watermark...');
     processedBuffer = await addWatermark(processedBuffer);
   }
   
-  const thumbnailPath = path.join(uploadsDir, `${filename}_thumb.jpg`);
+  // Upload processed versions to S3
+  const enhancedKey = await s3Service.uploadImage(userId, imageId, processedBuffer, 'enhanced', 'jpg');
+  
   const thumbnailBuffer = await sharp(processedBuffer)
     .resize(200, 200, { fit: 'cover' })
     .jpeg({ quality: 80 })
     .toBuffer();
+  const thumbnailKey = await s3Service.uploadImage(userId, imageId, thumbnailBuffer, 'thumbnail', 'jpg');
   
-  // Apply watermark to thumbnail if requested
-  if (options.addWatermark) {
-    await sharp(await addWatermark(thumbnailBuffer, 'VISUASORT')).toFile(thumbnailPath);
-  } else {
-    await sharp(thumbnailBuffer).toFile(thumbnailPath);
-  }
-  results.thumbnailPath = thumbnailPath;
-  
-  const enhancedPath = path.join(uploadsDir, `${filename}_enhanced.jpg`);
-  await sharp(processedBuffer)
-    .jpeg({ quality: 90 })
-    .toFile(enhancedPath);
-  results.enhancedPath = enhancedPath;
-  
-  const webPath = path.join(uploadsDir, `${filename}_web.webp`);
-  await sharp(processedBuffer)
+  const webBuffer = await sharp(processedBuffer)
     .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
     .webp({ quality: 85 })
-    .toFile(webPath);
-  results.webPath = webPath;
+    .toBuffer();
+  const webKey = await s3Service.uploadImage(userId, imageId, webBuffer, 'web', 'webp');
   
-  return results;
+  return { enhancedKey, thumbnailKey, webKey };
 };
 
-// Backward compatibility
-exports.processImage = async (imagePath) => {
-  return exports.processImageEnhanced(imagePath, {
-    autoEnhance: false,
-    addWatermark: false,
-    applyFilter: 'none'
-  });
+// Buffer-based processing for load testing
+exports.processImageEnhancedBuffer = async (inputBuffer, options = {}) => {
+  let processedBuffer = await sharp(inputBuffer)
+    .rotate()
+    .resize(2200, 2200, { fit: 'inside', withoutEnlargement: false })
+    .blur(3)
+    .sharpen(2, 1, 3)
+    .normalize()
+    .toBuffer();
+  
+  if (options.autoEnhance) {
+    processedBuffer = await autoEnhance(processedBuffer);
+  }
+  
+  if (options.applyFilter && options.applyFilter !== 'none') {
+    processedBuffer = await applyFilter(processedBuffer, options.applyFilter);
+  }
+  
+  if (options.addWatermark) {
+    processedBuffer = await addWatermark(processedBuffer);
+  }
+  
+  return processedBuffer;
 };
+
