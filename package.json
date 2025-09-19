@@ -1,13 +1,14 @@
 {
   "name": "visuasort",
   "version": "1.0.0",
-  "description": "Image processing and tagging API with AI integration",
+  "description": "Professional image processing API with S3 storage, DynamoDB metadata, and AI integration",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
     "load-test": "node tests/cpu-load-test.js",
     "build-frontend": "cd frontend && npm install && npm run build",
+    "setup-dynamodb": "node create-dynamodb-table.js",
     "test": "node tests/test-runner.js"
   },
   "dependencies": {
@@ -22,7 +23,6 @@
     "form-data": "^4.0.4",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
-    "lowdb": "^1.0.0",
     "multer": "^2.0.2",
     "sharp": "^0.32.6",
     "uuid": "^11.1.0"

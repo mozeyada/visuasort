@@ -36,9 +36,6 @@ COPY index.js .
 COPY uploads/.gitkeep ./uploads/
 COPY data/.gitkeep ./data/
 
-# Initialize empty LowDB database
-RUN echo '{"images":[]}' > data/db.json
-
 # Security: Set proper permissions and switch to non-root user
 RUN chown -R node:node /app
 USER node

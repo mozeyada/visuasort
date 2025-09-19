@@ -16,7 +16,8 @@ Professional AI-powered image processing and gallery management API with React f
 ### Local Development
 ```bash
 npm install
-cp .env.example .env  # Configure API keys
+cp .env.example .env  # Configure API keys and AWS credentials
+npm run setup-dynamodb  # Create DynamoDB table
 npm run build-frontend
 npm start
 ```
@@ -92,6 +93,12 @@ BASE_URL=http://your-ec2-ip:3000 node tests/cpu-load-test.js
 # Required
 JWT_SECRET=your_jwt_secret
 
+# AWS Configuration (local development only)
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_SESSION_TOKEN=your_session_token
+AWS_REGION=ap-southeast-2
+
 # Optional (for AI tagging)
 IMAGGA_API_KEY=your_imagga_key
 IMAGGA_API_SECRET=your_imagga_secret
@@ -100,7 +107,7 @@ HUGGINGFACE_API_KEY=your_hf_key
 
 ## Architecture
 
-- **Backend**: Node.js + Express + LowDB
+- **Backend**: Node.js + Express + DynamoDB
 - **Frontend**: React (built into backend)
 - **Image Processing**: Sharp with professional enhancement service
   - Auto-enhancement with statistical analysis
@@ -117,7 +124,7 @@ HUGGINGFACE_API_KEY=your_hf_key
 ### Core Criteria (20/20)
 ✅ **CPU Intensive Task**: Sharp image processing with professional enhancements  
 ✅ **Load Testing**: Main-Rule compliant staging/processing architecture  
-✅ **Data Types**: Unstructured (images) + Structured (LowDB metadata)  
+✅ **Data Types**: Unstructured (S3 images) + Structured (DynamoDB metadata)  
 ✅ **Containerized**: Docker + ECR ready with single process  
 ✅ **Deploy Container**: EC2 + ECR deployment via Docker Compose  
 ✅ **REST API**: Full HTTP methods with proper status codes  

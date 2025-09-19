@@ -92,20 +92,19 @@ const applyFilter = async (inputBuffer, filterType) => {
         .toBuffer();
         
     case 'bw_artistic':
-      // Multi-pass B&W effect with heavy processing
+      // Improved B&W artistic effect with better contrast balance
       let bwBuffer = await image
-        .blur(4)
         .grayscale()
-        .normalize()
-        .sharpen(3, 1, 4)
-        .gamma(1.1)
-        .convolve({ width: 3, height: 3, kernel: [-1, -1, -1, -1, 8, -1, -1, -1, -1] })
+        .modulate({ brightness: 1.1, contrast: 1.2 }) // Boost brightness and contrast
+        .blur(1.5) // Light blur for artistic effect
+        .sharpen(2, 1, 2) // Moderate sharpening
+        .gamma(0.9) // Slightly darker gamma for artistic look
+        .normalize() // Normalize after adjustments
         .toBuffer();
-      // Second pass
+      // Second pass for refinement
       return await sharp(bwBuffer)
-        .blur(1)
-        .sharpen(2, 1, 3)
-        .modulate({ brightness: 1.05 })
+        .modulate({ brightness: 1.05, contrast: 1.1 }) // Final brightness boost
+        .sharpen(1, 1, 1) // Light final sharpening
         .toBuffer();
         
     case 'soft_portrait':
