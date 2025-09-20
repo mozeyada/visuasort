@@ -223,10 +223,10 @@ Resources:
       Description: Visuasort application secrets
       SecretString: !Sub |
         {
-          "JWT_SECRET": "supersecret-production-jwt-key-change-this",
-          "IMAGGA_API_KEY": "acc_5a099d2ce3b9a49",
-          "IMAGGA_API_SECRET": "0a7881fc07ddbd096187119eafdfab4d",
-          "HUGGINGFACE_API_KEY": "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",
+          "JWT_SECRET": "your-jwt-secret-here",
+          "IMAGGA_API_KEY": "your-imagga-api-key",
+          "IMAGGA_API_SECRET": "your-imagga-api-secret",
+          "HUGGINGFACE_API_KEY": "your-huggingface-token",
           "COGNITO_USER_POOL_ID": "${VisuasortUserPool}",
           "COGNITO_CLIENT_ID": "${VisuasortUserPoolClient}"
         }
