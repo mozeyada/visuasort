@@ -5,8 +5,7 @@ const s3Service = require('../services/s3Service');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
-// In-memory store for staged files
-const stagedFiles = {};
+// Stateless design - no in-memory storage
 
 exports.uploadImage = async (req, res) => {
   try {
@@ -404,27 +403,44 @@ exports.patchImage = async (req, res) => {
   }
 };
 
-// Load test staging endpoint
-exports.stageImage = (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ message: 'No image file provided.' });
+// Load test staging endpoint - stateless using S3
+exports.stageImage = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No image file provided.' });
+    }
+    const imageId = uuidv4();
+    const userId = req.user.username;
+    
+    // Store in S3 instead of memory for statelessness
+    const stagingKey = await s3Service.uploadImage(
+      userId, 
+      imageId, 
+      req.file.buffer, 
+      'staging',
+      'jpg'
+    );
+    
+    res.status(201).json({ imageId, stagingKey });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to stage image.' });
   }
-  const imageId = uuidv4();
-  // Store buffer in memory for later processing
-  stagedFiles[imageId] = req.file.buffer;
-  res.status(201).json({ imageId });
 };
 
-// Load test processing endpoint
+// Load test processing endpoint - stateless using S3
 exports.processStagedImage = async (req, res) => {
-  const { imageId } = req.params;
-  const imageBuffer = stagedFiles[imageId];
-  
-  if (!imageBuffer) {
-    return res.status(404).json({ message: 'Staged image not found.' });
-  }
-  
   try {
+    const { imageId } = req.params;
+    const userId = req.user.username;
+    
+    // Get staged image from S3
+    const stagingKey = `images/${userId}/${imageId}/staging.jpg`;
+    const imageBuffer = await s3Service.getImageBuffer(stagingKey);
+    
+    if (!imageBuffer) {
+      return res.status(404).json({ message: 'Staged image not found.' });
+    }
+    
     const enhanceOptions = {
       autoEnhance: req.body.autoEnhance || true,
       addWatermark: req.body.addWatermark || true,
@@ -433,8 +449,6 @@ exports.processStagedImage = async (req, res) => {
     };
     
     await imageService.processImageEnhancedBuffer(imageBuffer, enhanceOptions);
-    
-    // Don't delete the staged file - keep it for multiple processing requests (load testing)
     
     res.status(200).json({ message: 'Processing successful', imageId });
   } catch (error) {

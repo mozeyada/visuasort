@@ -6,30 +6,6 @@ Parameters:
     Type: AWS::EC2::KeyPair::KeyName
     Description: EC2 Key Pair for SSH access
     Default: n11693860
-  
-  JWTSecret:
-    Type: String
-    Description: JWT Secret for authentication
-    Default: supersecret
-    NoEcho: true
-  
-  ImaggaAPIKey:
-    Type: String
-    Description: Imagga API Key (optional)
-    Default: "your_imagga_api_key"
-    NoEcho: true
-  
-  ImaggaAPISecret:
-    Type: String
-    Description: Imagga API Secret (optional)
-    Default: "your_imagga_api_secret"
-    NoEcho: true
-  
-  HuggingFaceAPIKey:
-    Type: String
-    Description: Hugging Face API Key (optional)
-    Default: "your_huggingface_token_here"
-    NoEcho: true
 
 Resources:
   # Security Group
@@ -52,7 +28,7 @@ Resources:
         - Key: Name
           Value: visuasort-sg
 
-  # IAM Role for EC2 to access ECR
+  # IAM Role for EC2 to access ECR, S3, DynamoDB, Secrets Manager
   EC2Role:
     Type: AWS::IAM::Role
     Properties:
@@ -65,6 +41,12 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+        - arn:aws:iam::aws:policy/SecretsManagerReadWrite
+        - arn:aws:iam::aws:policy/AmazonCognitoPowerUser
+        - arn:aws:iam::aws:policy/AmazonElastiCacheFullAccess
+        - arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess
       Tags:
         - Key: Name
           Value: visuasort-ec2-role
@@ -80,7 +62,7 @@ Resources:
   VisuasortInstance:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: ami-0146fc9ad419e2cfd  # Ubuntu 24.04 LTS in ap-southeast-2
+      ImageId: ami-0892a9a01908fafd1  # Ubuntu 24.04 LTS in ap-southeast-2 (current)
       InstanceType: t3.micro
       KeyName: !Ref KeyPairName
       SecurityGroupIds:
@@ -118,16 +100,20 @@ Resources:
           # Pull and run the container
           docker pull 901444280953.dkr.ecr.ap-southeast-2.amazonaws.com/n11693860-repo:latest
           
-          # Run container with environment variables
+          # Wait for ElastiCache to be available
+          echo "Waiting for ElastiCache cluster to be available..."
+          aws elasticache wait cache-cluster-available --cache-cluster-id VisuasortCache --region ap-southeast-2
+          
+          # Get ElastiCache endpoint
+          CACHE_ENDPOINT=$(aws elasticache describe-cache-clusters --cache-cluster-id VisuasortCache --show-cache-node-info --region ap-southeast-2 --query 'CacheClusters[0].CacheNodes[0].Endpoint.Address' --output text)
+          
+          # Run container with environment variables (secrets from Secrets Manager)
           docker run -d \
             --name visuasort \
             --restart unless-stopped \
             -p 3000:3000 \
-            -e JWT_SECRET="${JWTSecret}" \
-            -e IMAGGA_API_KEY="${ImaggaAPIKey}" \
-            -e IMAGGA_API_SECRET="${ImaggaAPISecret}" \
-            -e AI_API_KEY="${HuggingFaceAPIKey}" \
-            -e AI_API_URL="https://api-inference.huggingface.co/models/microsoft/resnet-50" \
+            -e ELASTICACHE_ENDPOINT="$CACHE_ENDPOINT:11211" \
+            -e AWS_REGION="ap-southeast-2" \
             -e NODE_ENV=production \
             901444280953.dkr.ecr.ap-southeast-2.amazonaws.com/n11693860-repo:latest
           
@@ -138,6 +124,191 @@ Resources:
       Tags:
         - Key: Name
           Value: visuasort-instance
+
+  # ElastiCache Memcached Cluster (uses default VPC)
+  VisuasortCache:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      CacheNodeType: cache.t3.micro
+      Engine: memcached
+      NumCacheNodes: 1
+      Port: 11211
+      VpcSecurityGroupIds:
+        - !Ref CacheSecurityGroup
+      Tags:
+        - Key: Name
+          Value: visuasort-cache
+
+  # Security Group for ElastiCache
+  CacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for ElastiCache
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 11211
+          ToPort: 11211
+          SourceSecurityGroupId: !Ref VisuasortSecurityGroup
+          Description: Memcached access from EC2
+      Tags:
+        - Key: Name
+          Value: visuasort-cache-sg
+
+  # Cognito User Pool
+  VisuasortUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: n11693860-visuasort-users
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      UsernameConfiguration:
+        CaseSensitive: false
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: role
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+      UserPoolTags:
+        Name: visuasort-user-pool
+        qut-username: n11693860@qut.edu.au
+        purpose: assessment-2
+
+  # Cognito User Pool Client
+  VisuasortUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: n11693860-visuasort-client
+      UserPoolId: !Ref VisuasortUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+  # Cognito User Groups
+  AdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: Administrators
+      Description: Admin users with full access
+      UserPoolId: !Ref VisuasortUserPool
+      Precedence: 1
+
+  UsersGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: Users
+      Description: Standard users
+      UserPoolId: !Ref VisuasortUserPool
+      Precedence: 2
+
+  # Secrets Manager Secret
+  VisuasortSecrets:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: n11693860-visuasort-secrets
+      Description: Visuasort application secrets
+      SecretString: !Sub |
+        {
+          "JWT_SECRET": "supersecret-production-jwt-key-change-this",
+          "IMAGGA_API_KEY": "acc_5a099d2ce3b9a49",
+          "IMAGGA_API_SECRET": "0a7881fc07ddbd096187119eafdfab4d",
+          "HUGGINGFACE_API_KEY": "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",
+          "COGNITO_USER_POOL_ID": "${VisuasortUserPool}",
+          "COGNITO_CLIENT_ID": "${VisuasortUserPoolClient}"
+        }
+      Tags:
+        - Key: Name
+          Value: visuasort-secrets
+        - Key: qut-username
+          Value: n11693860@qut.edu.au
+        - Key: purpose
+          Value: assessment-2
+
+  # Parameter Store Parameters
+  AppUrlParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /n11693860/visuasort/app-url
+      Type: String
+      Value: !Sub "http://${VisuasortInstance.PublicIp}:3000"
+      Description: Application URL for frontend
+      Tags:
+        Name: visuasort-app-url
+        qut-username: n11693860@qut.edu.au
+        purpose: assessment-2
+
+  DomainUrlParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /n11693860/visuasort/domain-url
+      Type: String
+      Value: "http://n11693860-visuasort.cab432.com:3000"
+      Description: Domain URL for frontend
+      Tags:
+        Name: visuasort-domain-url
+        qut-username: n11693860@qut.edu.au
+        purpose: assessment-2
+
+  ApiVersionParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /n11693860/visuasort/api-version
+      Type: String
+      Value: "v1"
+      Description: API version
+      Tags:
+        Name: visuasort-api-version
+        qut-username: n11693860@qut.edu.au
+        purpose: assessment-2
+
+  MaxUploadSizeParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /n11693860/visuasort/max-upload-size
+      Type: String
+      Value: "10485760"
+      Description: Maximum upload size in bytes
+      Tags:
+        Name: visuasort-max-upload-size
+        qut-username: n11693860@qut.edu.au
+        purpose: assessment-2
+
+  ElastiCacheEndpointParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /n11693860/visuasort/elasticache-endpoint
+      Type: String
+      Value: !Sub "${VisuasortCache.ConfigurationEndpoint.Address}:11211"
+      Description: ElastiCache endpoint
+      Tags:
+        Name: visuasort-elasticache-endpoint
+        qut-username: n11693860@qut.edu.au
+        purpose: assessment-2
+
+  # Route53 DNS Record
+  VisuasortDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: Z1D633PJN98FT9  # cab432.com hosted zone ID
+      Name: n11693860-visuasort.cab432.com
+      Type: CNAME
+      TTL: 300
+      ResourceRecords:
+        - !GetAtt VisuasortInstance.PublicDnsName
 
 Outputs:
   InstanceId:
@@ -152,14 +323,50 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-PublicIP"
   
+  PublicDNS:
+    Description: Public DNS name of the instance
+    Value: !GetAtt VisuasortInstance.PublicDnsName
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicDNS"
+  
   ApplicationURL:
-    Description: Visuasort application URL
+    Description: Visuasort application URL (IP)
     Value: !Sub "http://${VisuasortInstance.PublicIp}:3000"
     Export:
       Name: !Sub "${AWS::StackName}-AppURL"
+  
+  DomainURL:
+    Description: Visuasort application URL (Domain)
+    Value: "http://n11693860-visuasort.cab432.com:3000"
+    Export:
+      Name: !Sub "${AWS::StackName}-DomainURL"
   
   SSHCommand:
     Description: SSH command to connect to the instance
     Value: !Sub "ssh -i n11693860.pem ubuntu@${VisuasortInstance.PublicIp}"
     Export:
       Name: !Sub "${AWS::StackName}-SSH"
+  
+  CognitoUserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref VisuasortUserPool
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolId"
+  
+  CognitoClientId:
+    Description: Cognito User Pool Client ID
+    Value: !Ref VisuasortUserPoolClient
+    Export:
+      Name: !Sub "${AWS::StackName}-ClientId"
+  
+  ElastiCacheEndpoint:
+    Description: ElastiCache Configuration Endpoint
+    Value: !GetAtt VisuasortCache.ConfigurationEndpoint.Address
+    Export:
+      Name: !Sub "${AWS::StackName}-CacheEndpoint"
+  
+  SecretsManagerArn:
+    Description: Secrets Manager Secret ARN
+    Value: !Ref VisuasortSecrets
+    Export:
+      Name: !Sub "${AWS::StackName}-SecretsArn"

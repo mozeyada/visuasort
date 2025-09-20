@@ -1,9 +1,13 @@
 const express = require('express');
 const authController = require('../controllers/authController');
+const cognitoController = require('../controllers/cognitoController');
 
 const router = express.Router();
 
-router.post('/login', authController.login);
-router.post('/register', authController.register);
+// Cognito authentication (Assessment 2 requirement)
+router.post('/register', cognitoController.register);
+router.post('/confirm', cognitoController.confirmRegistration);
+router.post('/login', cognitoController.login);
+router.get('/verify', cognitoController.verifyToken);
 
 module.exports = router;

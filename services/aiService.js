@@ -1,14 +1,7 @@
-require('dotenv').config();
 const axios = require('axios');
 const FormData = require('form-data');
-
-// Validate required environment variables
-if (!process.env.IMAGGA_API_KEY || !process.env.IMAGGA_API_SECRET) {
-  console.warn('Imagga API credentials missing - fallback to Hugging Face only');
-}
-if (!process.env.AI_API_KEY) {
-  console.warn('Hugging Face API key missing - AI tagging may fail');
-}
+const secretsService = require('./secretsService');
+const parameterService = require('./parameterService');
 
 /**
  * Primary and fallback AI tagging service
@@ -52,6 +45,8 @@ exports.generateTagsWithFallback = async (imageBuffer) => {
  * Call Imagga API for image tagging with buffer
  */
 async function callImaggaAPIBuffer(imageBuffer) {
+  const credentials = await secretsService.getImaggaCredentials();
+  
   // Create form data for multipart upload
   const form = new FormData();
   form.append('image', imageBuffer, { filename: 'image.jpg' });
@@ -59,7 +54,7 @@ async function callImaggaAPIBuffer(imageBuffer) {
   const response = await axios.post('https://api.imagga.com/v2/tags', form, {
     headers: {
       ...form.getHeaders(),
-      'Authorization': `Basic ${Buffer.from(`${process.env.IMAGGA_API_KEY}:${process.env.IMAGGA_API_SECRET}`).toString('base64')}`
+      'Authorization': `Basic ${Buffer.from(`${credentials.key}:${credentials.secret}`).toString('base64')}`
     },
     timeout: 30000
   });
@@ -79,9 +74,14 @@ async function callImaggaAPIBuffer(imageBuffer) {
  * Call Hugging Face API for image classification with buffer
  */
 async function callHuggingFaceAPIBuffer(imageBuffer) {
-  const response = await axios.post(process.env.AI_API_URL, imageBuffer, {
+  const apiKey = await secretsService.getHuggingFaceKey();
+  
+  const config = await parameterService.getApplicationConfig();
+  const apiUrl = 'https://api-inference.huggingface.co/models/microsoft/resnet-50';
+  
+  const response = await axios.post(apiUrl, imageBuffer, {
     headers: {
-      'Authorization': `Bearer ${process.env.AI_API_KEY}`,
+      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'image/png'
     },
     timeout: 30000

@@ -1,4 +1,4 @@
-require('dotenv').config();
+// AWS credentials from IAM role in production
 const DynamoDB = require("@aws-sdk/client-dynamodb");
 const DynamoDBLib = require("@aws-sdk/lib-dynamodb");
 

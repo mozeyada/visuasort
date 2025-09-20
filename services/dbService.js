@@ -2,9 +2,11 @@
  * DynamoDB Service for Visuasort Image Management
  * Implements QUT CAB432 requirements with qut-username partition key
  * Handles all database operations for image metadata storage
+ * Includes in-memory caching for performance optimization
  */
 const DynamoDB = require("@aws-sdk/client-dynamodb");
 const DynamoDBLib = require("@aws-sdk/lib-dynamodb");
+const elasticacheService = require('./elasticacheService');
 
 class VisuaSortDynamoService {
   constructor() {
@@ -28,6 +30,15 @@ class VisuaSortDynamoService {
 
     try {
       await this.docClient.send(command);
+      
+      // Invalidate related caches (non-blocking)
+      try {
+        await elasticacheService.invalidateUserImages(imageData.owner);
+        await elasticacheService.cacheImageMetadata(imageData.id, imageData);
+      } catch (cacheError) {
+        console.warn('Cache operation failed:', cacheError.message);
+      }
+      
       return imageData;
     } catch (error) {
       console.error('DynamoDB saveImage error:', error);
@@ -37,6 +48,17 @@ class VisuaSortDynamoService {
 
   async getImages(owner, options = {}) {
     const { page = 1, limit = 10, sort = 'uploadDate', order = 'desc' } = options;
+    
+    // Check cache first
+    try {
+      const cached = await elasticacheService.getUserImages(owner);
+      if (cached) {
+        console.log('Cache hit: user images for', owner);
+        return cached;
+      }
+    } catch (cacheError) {
+      console.warn('Cache read failed:', cacheError.message);
+    }
     
     const command = new DynamoDBLib.QueryCommand({
       TableName: this.tableName,
@@ -55,7 +77,16 @@ class VisuaSortDynamoService {
     try {
       const response = await this.docClient.send(command);
       const images = response.Items || [];
-      return this.applySortingAndPagination(images, { page, limit, sort, order });
+      const result = this.applySortingAndPagination(images, { page, limit, sort, order });
+      
+      // Cache the result (non-blocking)
+      try {
+        await elasticacheService.cacheUserImages(owner, result.data, result.pagination);
+      } catch (cacheError) {
+        console.warn('Cache write failed:', cacheError.message);
+      }
+      
+      return result;
     } catch (error) {
       console.error('Database query failed for getImages:', error);
       return { data: [], pagination: { page: 1, limit, total: 0, pages: 0, hasNext: false, hasPrev: false } };
@@ -63,6 +94,17 @@ class VisuaSortDynamoService {
   }
 
   async getImageById(id) {
+    // Check cache first
+    try {
+      const cached = await elasticacheService.getImageMetadata(id);
+      if (cached) {
+        console.log('Cache hit: image metadata for', id);
+        return cached;
+      }
+    } catch (cacheError) {
+      console.warn('Cache read failed:', cacheError.message);
+    }
+    
     const command = new DynamoDBLib.ScanCommand({
       TableName: this.tableName,
       FilterExpression: "id = :id",
@@ -73,7 +115,18 @@ class VisuaSortDynamoService {
 
     try {
       const response = await this.docClient.send(command);
-      return response.Items && response.Items.length > 0 ? response.Items[0] : null;
+      const image = response.Items && response.Items.length > 0 ? response.Items[0] : null;
+      
+      // Cache the result if found (non-blocking)
+      if (image) {
+        try {
+          await elasticacheService.cacheImageMetadata(id, image);
+        } catch (cacheError) {
+          console.warn('Cache write failed:', cacheError.message);
+        }
+      }
+      
+      return image;
     } catch (error) {
       console.error('Database query failed for getImageById:', error);
       return null;
@@ -205,6 +258,17 @@ class VisuaSortDynamoService {
   }
 
   async getTagCategories(owner) {
+    // Check cache first
+    try {
+      const cached = await elasticacheService.getTagCategories(owner);
+      if (cached) {
+        console.log('Cache hit: tag categories for', owner);
+        return cached;
+      }
+    } catch (cacheError) {
+      console.warn('Cache read failed:', cacheError.message);
+    }
+    
     try {
       const command = new DynamoDBLib.QueryCommand({
         TableName: this.tableName,
@@ -236,7 +300,14 @@ class VisuaSortDynamoService {
       });
       
       const result = Array.from(categories).sort();
-      // Debug: Log categories for verification
+      
+      // Cache the result (non-blocking)
+      try {
+        await elasticacheService.cacheTagCategories(owner, result);
+      } catch (cacheError) {
+        console.warn('Cache write failed:', cacheError.message);
+      }
+      
       return result;
     } catch (error) {
       console.error('Database query failed for categories:', error);

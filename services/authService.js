@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const secretsService = require('./secretsService');
 
 const users = [
   { username: 'admin', password: 'password', role: 'admin' },
@@ -11,19 +12,21 @@ exports.validateUser = (username, password) => {
   return user ? { valid: true, user: { username: user.username, role: user.role } } : { valid: false };
 };
 
-exports.generateToken = (user) => {
-  if (!process.env.JWT_SECRET) {
-    throw new Error('JWT_SECRET environment variable is required');
+exports.generateToken = async (user) => {
+  const jwtSecret = await secretsService.getJwtSecret();
+  if (!jwtSecret) {
+    throw new Error('JWT_SECRET not available from Secrets Manager or environment');
   }
-  return jwt.sign(user, process.env.JWT_SECRET, { expiresIn: '24h' });
+  return jwt.sign(user, jwtSecret, { expiresIn: '24h' });
 };
 
-exports.verifyToken = (token) => {
+exports.verifyToken = async (token) => {
   try {
-    if (!process.env.JWT_SECRET) {
-      throw new Error('JWT_SECRET environment variable is required');
+    const jwtSecret = await secretsService.getJwtSecret();
+    if (!jwtSecret) {
+      throw new Error('JWT_SECRET not available from Secrets Manager or environment');
     }
-    return jwt.verify(token, process.env.JWT_SECRET);
+    return jwt.verify(token, jwtSecret);
   } catch {
     return null;
   }

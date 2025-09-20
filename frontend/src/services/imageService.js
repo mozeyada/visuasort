@@ -1,4 +1,15 @@
-const API_BASE = '/api/v1';
+// Get API base from backend configuration
+let API_BASE = '/api/v1'; // fallback
+
+// Initialize API base from backend
+fetch('/api/config')
+  .then(res => res.json())
+  .then(config => {
+    API_BASE = config.apiBase || '/api/v1';
+  })
+  .catch(() => {
+    console.warn('Could not load API configuration, using fallback');
+  });
 
 export const imageService = {
   async getImages(token, endpoint = '/api/v1/images', page = 1, limit = 20, sort = 'uploadDate', order = 'desc') {
@@ -26,26 +37,62 @@ export const imageService = {
   async uploadImage(file, token, options = {}) {
     const { useAI = false, autoEnhance = false, addWatermark = false, applyFilter = 'none' } = options;
     
-    const formData = new FormData();
-    formData.append('image', file);
-    formData.append('useAI', useAI.toString());
-    formData.append('autoEnhance', autoEnhance.toString());
-    formData.append('addWatermark', addWatermark.toString());
-    formData.append('applyFilter', applyFilter);
-
-    const response = await fetch(`${API_BASE}/images/upload`, {
+    // Get pre-signed URL for direct S3 upload
+    const presignedResponse = await fetch(`${API_BASE}/images/presigned-upload`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
       },
-      body: formData,
+      body: JSON.stringify({
+        filename: file.name,
+        contentType: file.type
+      }),
     });
 
-    if (!response.ok && response.status !== 202) {
-      throw new Error('Upload failed');
+    if (!presignedResponse.ok) {
+      throw new Error('Failed to get upload URL');
     }
 
-    return response.json();
+    const { uploadUrl, key, imageId } = await presignedResponse.json();
+
+    // Upload directly to S3
+    const uploadResponse = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': file.type,
+      },
+      body: file,
+    });
+
+    if (!uploadResponse.ok) {
+      throw new Error('S3 upload failed');
+    }
+
+    // Notify backend of successful upload
+    const notifyResponse = await fetch(`${API_BASE}/images/upload-complete`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        key,
+        imageId,
+        filename: file.name,
+        size: file.size,
+        useAI,
+        autoEnhance,
+        addWatermark,
+        applyFilter
+      }),
+    });
+
+    if (!notifyResponse.ok && notifyResponse.status !== 202) {
+      throw new Error('Upload notification failed');
+    }
+
+    return notifyResponse.json();
   },
 
   async deleteImage(imageId, token) {

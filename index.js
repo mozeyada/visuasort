@@ -1,4 +1,3 @@
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -6,9 +5,10 @@ const path = require('path');
 
 const authRoutes = require('./routes/auth');
 const imageRoutes = require('./routes/images');
+const elasticacheRoutes = require('./routes/elasticache');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = 3000; // Fixed port for containerized deployment
 
 // Middleware
 app.use(helmet.contentSecurityPolicy({
@@ -26,7 +26,7 @@ app.use(helmet.contentSecurityPolicy({
   },
 }));
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? false : 'http://localhost:3000'
+  origin: false // Production deployment - no CORS needed
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -44,12 +44,21 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// Service status endpoint for assessment demonstration
+const statusController = require('./controllers/statusController');
+app.get('/status', statusController.getServiceStatus);
+
+// Configuration endpoint for frontend
+const configController = require('./controllers/configController');
+app.get('/api/config', configController.getConfig);
+
 // Static files
 app.use('/uploads', express.static('uploads'));
 
 // Routes with versioning (required for Extended API Features rubric)
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/images', imageRoutes);
+app.use('/api/v1/elasticache', elasticacheRoutes);
 
 // Backward compatibility
 app.use('/api/auth', (req, res, next) => {

@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const secretsService = require('../services/secretsService');
 
 // Hardcoded users with roles (plain text for development)
 const users = [
@@ -6,7 +7,7 @@ const users = [
   { id: 2, username: 'user', password: 'password', role: 'user' }
 ];
 
-exports.login = (req, res) => {
+exports.login = async (req, res) => {
   try {
     const { username, password } = req.body;
     const user = users.find(u => u.username === username && u.password === password);
@@ -16,7 +17,8 @@ exports.login = (req, res) => {
     }
 
     const userInfo = { id: user.id, username: user.username, role: user.role };
-    const token = jwt.sign(userInfo, process.env.JWT_SECRET);
+    const jwtSecret = await secretsService.getJwtSecret();
+    const token = jwt.sign(userInfo, jwtSecret);
     res.json({ token, user: userInfo });
   } catch (error) {
     res.status(500).json({ error: 'Login failed' });

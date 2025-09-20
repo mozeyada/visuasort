@@ -27,3 +27,11 @@ final-load-test.js
 # Temporary files
 q-dev-chat-*.md
 server.log
+
+# Assessment documentation (keep local only)
+ASSESSMENT-*.md
+
+# Test files that shouldn't be in repo
+test.png
+test.jpg
+*.test.js

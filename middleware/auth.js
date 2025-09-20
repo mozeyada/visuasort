@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
+const secretsService = require('../services/secretsService');
 
-module.exports = (req, res, next) => {
+module.exports = async (req, res, next) => {
   const token = req.header('Authorization')?.replace('Bearer ', '');
   
   if (!token) {
@@ -8,10 +9,8 @@ module.exports = (req, res, next) => {
   }
 
   try {
-    if (!process.env.JWT_SECRET) {
-      return res.status(500).json({ error: 'JWT secret not configured' });
-    }
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const jwtSecret = await secretsService.getJwtSecret();
+    const decoded = jwt.verify(token, jwtSecret);
     req.user = decoded;
     next();
   } catch (error) {

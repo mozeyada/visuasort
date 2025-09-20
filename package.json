@@ -12,19 +12,23 @@
     "test": "node tests/test-runner.js"
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.891.0",
     "@aws-sdk/client-dynamodb": "^3.891.0",
     "@aws-sdk/client-s3": "^3.891.0",
+    "@aws-sdk/client-secrets-manager": "^3.891.0",
+    "@aws-sdk/client-ssm": "^3.891.0",
     "@aws-sdk/lib-dynamodb": "^3.891.0",
     "@aws-sdk/s3-request-presigner": "^3.891.0",
-    "axios": "^1.6.0",
+    "aws-jwt-verify": "^5.1.0",
+    "axios": "^1.12.2",
     "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
+    "express": "^4.21.2",
     "form-data": "^4.0.4",
-    "helmet": "^7.1.0",
+    "helmet": "^7.2.0",
     "jsonwebtoken": "^9.0.2",
+    "memcached": "^2.2.2",
     "multer": "^2.0.2",
-    "sharp": "^0.32.6",
+    "sharp": "^0.33.5",
     "uuid": "^11.1.0"
   },
   "devDependencies": {

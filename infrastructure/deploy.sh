@@ -16,17 +16,12 @@ echo "🌏 Region: $REGION"
 echo "📄 Template: $TEMPLATE_FILE"
 echo ""
 
-# Deploy CloudFormation stack
+# Deploy CloudFormation stack (secrets from Secrets Manager)
 aws cloudformation deploy \
   --template-file "$TEMPLATE_FILE" \
   --stack-name "$STACK_NAME" \
   --region "$REGION" \
   --capabilities CAPABILITY_IAM \
-  --parameter-overrides \
-    JWTSecret=supersecret \
-    ImaggaAPIKey="${IMAGGA_API_KEY:-acc_5a099d2ce3b9a49}" \
-    ImaggaAPISecret="${IMAGGA_API_SECRET:-0a7881fc07ddbd096187119eafdfab4d}" \
-    HuggingFaceAPIKey="${HUGGINGFACE_API_KEY:-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}" \
   --no-fail-on-empty-changeset
 
 echo ""

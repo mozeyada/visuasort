@@ -1,7 +1,8 @@
 const express = require('express');
 const multer = require('multer');
 const imageController = require('../controllers/imageController');
-const authMiddleware = require('../middleware/auth');
+const uploadController = require('../controllers/uploadController');
+const cognitoAuth = require('../middleware/cognitoAuth');
 const { v4: uuidv4 } = require('uuid');
 
 const router = express.Router();
@@ -24,11 +25,11 @@ const upload = multer({
 });
 
 // Load test endpoints
-router.post('/stage', authMiddleware, upload.single('image'), imageController.stageImage);
-router.post('/process/:imageId', authMiddleware, imageController.processStagedImage);
+router.post('/stage', cognitoAuth, upload.single('image'), imageController.stageImage);
+router.post('/process/:imageId', cognitoAuth, imageController.processStagedImage);
 
 // Error handling middleware for multer
-router.post('/upload', authMiddleware, (req, res, next) => {
+router.post('/upload', hybridAuth, (req, res, next) => {
   upload.single('image')(req, res, (err) => {
     if (err) {
       console.error('Multer error:', err.message);
@@ -37,22 +38,23 @@ router.post('/upload', authMiddleware, (req, res, next) => {
     next();
   });
 }, imageController.uploadImage);
-router.get('/', authMiddleware, imageController.getImages);
-router.get('/search', authMiddleware, imageController.searchImages);
-router.get('/filter', authMiddleware, imageController.filterImages);
-router.get('/categories', authMiddleware, imageController.getTagCategories);
-router.get('/admin/all', authMiddleware, imageController.getAllImagesAdmin);
-router.delete('/admin/:id', authMiddleware, imageController.deleteImageAdmin);
+router.get('/', cognitoAuth, imageController.getImages);
+router.get('/search', cognitoAuth, imageController.searchImages);
+router.get('/filter', cognitoAuth, imageController.filterImages);
+router.get('/categories', cognitoAuth, imageController.getTagCategories);
+router.get('/admin/all', cognitoAuth, imageController.getAllImagesAdmin);
+router.delete('/admin/:id', cognitoAuth, imageController.deleteImageAdmin);
 
-router.post('/:id/process', authMiddleware, imageController.processImage);
-router.post('/:id/enhance', authMiddleware, imageController.reEnhanceImage);
-router.put('/:id', authMiddleware, imageController.updateImage);
-router.patch('/:id', authMiddleware, imageController.patchImage);
-router.get('/:id', authMiddleware, imageController.getImageById);
-router.delete('/:id', authMiddleware, imageController.deleteImage);
+router.post('/:id/process', cognitoAuth, imageController.processImage);
+router.post('/:id/enhance', cognitoAuth, imageController.reEnhanceImage);
+router.put('/:id', cognitoAuth, imageController.updateImage);
+router.patch('/:id', cognitoAuth, imageController.patchImage);
+router.get('/:id', cognitoAuth, imageController.getImageById);
+router.delete('/:id', cognitoAuth, imageController.deleteImage);
 
 // Pre-signed URL endpoints for Assessment 2
-router.post('/presigned-upload', authMiddleware, imageController.getPresignedUploadUrl);
-router.get('/:id/presigned-url', authMiddleware, imageController.getPresignedDownloadUrl);
+router.post('/presigned-upload', cognitoAuth, imageController.getPresignedUploadUrl);
+router.post('/upload-complete', cognitoAuth, uploadController.uploadComplete);
+router.get('/:id/presigned-url', cognitoAuth, imageController.getPresignedDownloadUrl);
 
 module.exports = router;

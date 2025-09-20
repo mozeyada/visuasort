@@ -1,6 +1,5 @@
-# CAB432 Assessment 1 - Visuasort Docker Image
-# Professional image processing API with React frontend
-# ECR: 901444280953.dkr.ecr.ap-southeast-2.amazonaws.com/n11693860-repo
+# Visuasort - Professional Image Processing API
+# Multi-stage Docker build for Node.js application with React frontend
 
 # syntax=docker/dockerfile:1
 FROM node:22-alpine
@@ -11,11 +10,7 @@ RUN apk add --no-cache vips-dev fontconfig build-base python3 make g++
 # Set working directory
 WORKDIR /app
 
-# Install backend dependencies
-COPY package*.json ./
-RUN npm install --only=production
-
-# Build React frontend (multi-stage approach)
+# Build React frontend first
 COPY frontend/package*.json ./frontend/
 WORKDIR /app/frontend
 RUN npm ci
@@ -23,13 +18,19 @@ COPY frontend/src ./src
 COPY frontend/public ./public
 RUN npm run build
 
-# Copy backend application
+# Install backend dependencies
 WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+# Copy backend application
 COPY controllers ./controllers
 COPY middleware ./middleware
 COPY routes ./routes
 COPY services ./services
-COPY tests ./tests
+COPY setup-*.js ./
+COPY create-*.js ./
+COPY check-*.js ./
 COPY index.js .
 
 # Create required directories
@@ -43,5 +44,5 @@ USER node
 # Expose application port
 EXPOSE 3000
 
-# Start with single process (achieves >80% CPU on t3.micro)
+# Start the application
 CMD ["node", "index.js"]

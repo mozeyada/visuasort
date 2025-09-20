@@ -1,4 +1,3 @@
-require("dotenv").config();
 const DynamoDB = require("@aws-sdk/client-dynamodb");
 
 const qutUsername = "n11693860@qut.edu.au";  // Your actual student number
