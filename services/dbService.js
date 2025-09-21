@@ -4,15 +4,29 @@
  * Handles all database operations for image metadata storage
  * Includes in-memory caching for performance optimization
  */
-const DynamoDB = require("@aws-sdk/client-dynamodb");
-const DynamoDBLib = require("@aws-sdk/lib-dynamodb");
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient } = require('@aws-sdk/lib-dynamodb');
 const elasticacheService = require('./elasticacheService');
 
 class VisuaSortDynamoService {
   constructor() {
-    // Initialize DynamoDB client for ap-southeast-2 region
-    const client = new DynamoDB.DynamoDBClient({ region: "ap-southeast-2" });
-    this.docClient = DynamoDBLib.DynamoDBDocumentClient.from(client);
+    // Initialize DynamoDB client with throttling handling
+    const client = new DynamoDBClient({
+      region: process.env.AWS_REGION || 'ap-southeast-2',
+      maxAttempts: 5,  // Retry up to 5 times
+      retryMode: 'adaptive',  // Handles exponential backoff automatically
+      retryDelayOptions: {
+        base: 200  // Base delay of 200ms
+      }
+    });
+    
+    this.docClient = DynamoDBDocumentClient.from(client, {
+      marshallOptions: {
+        removeUndefinedValues: true,
+        convertEmptyValues: false,
+        convertClassInstanceToMap: false
+      }
+    });
     this.tableName = "n11693860-visuasort-images";
     // QUT CAB432 requirement: partition key must be qut-username
     this.qutUsername = "n11693860@qut.edu.au";
@@ -93,7 +107,7 @@ class VisuaSortDynamoService {
     }
   }
 
-  async getImageById(id) {
+  async getImageById(id, owner) {
     // Check cache first
     try {
       const cached = await elasticacheService.getImageMetadata(id);
@@ -105,17 +119,22 @@ class VisuaSortDynamoService {
       console.warn('Cache read failed:', cacheError.message);
     }
     
-    const command = new DynamoDBLib.ScanCommand({
+    const command = new DynamoDBLib.QueryCommand({
       TableName: this.tableName,
-      FilterExpression: "id = :id",
+      KeyConditionExpression: "#pk = :pk AND #sk = :sk",
+      ExpressionAttributeNames: {
+        "#pk": "qut-username",
+        "#sk": "imageId"
+      },
       ExpressionAttributeValues: {
-        ":id": id
+        ":pk": this.qutUsername,
+        ":sk": `${owner}#${id}`
       }
     });
 
     try {
       const response = await this.docClient.send(command);
-      const image = response.Items && response.Items.length > 0 ? response.Items[0] : null;
+      const image = response.Items?.[0] || null;
       
       // Cache the result if found (non-blocking)
       if (image) {
@@ -133,20 +152,25 @@ class VisuaSortDynamoService {
     }
   }
 
-  async deleteImage(id) {
-    const image = await this.getImageById(id);
-    if (!image) return;
-
+  async deleteImage(id, owner) {
     const command = new DynamoDBLib.DeleteCommand({
       TableName: this.tableName,
       Key: {
         "qut-username": this.qutUsername,
-        "imageId": `${image.owner}#${image.id}`
+        "imageId": `${owner}#${id}`
       }
     });
 
     try {
       await this.docClient.send(command);
+      
+      // Invalidate cache
+      try {
+        await elasticacheService.invalidateUserImages(owner);
+        await elasticacheService.delete(`image:${id}`);
+      } catch (cacheError) {
+        console.warn('Cache invalidation failed:', cacheError.message);
+      }
     } catch (error) {
       console.error('Database delete operation failed:', error);
       throw error;
@@ -154,7 +178,7 @@ class VisuaSortDynamoService {
   }
 
   async updateImageTags(id, tags) {
-    const image = await this.getImageById(id);
+    const image = await this.getImageById(id, image?.owner);
     if (!image) return;
 
     const command = new DynamoDBLib.UpdateCommand({
@@ -171,6 +195,14 @@ class VisuaSortDynamoService {
 
     try {
       await this.docClient.send(command);
+      
+      // Invalidate cache
+      try {
+        await elasticacheService.invalidateUserImages(image.owner);
+        await elasticacheService.cacheImageMetadata(id, { ...image, tags });
+      } catch (cacheError) {
+        console.warn('Cache invalidation failed:', cacheError.message);
+      }
     } catch (error) {
       console.error('Database update operation failed for tags:', error);
       throw error;
@@ -316,16 +348,26 @@ class VisuaSortDynamoService {
   }
 
   async getAllImages(options = {}) {
-    const command = new DynamoDBLib.QueryCommand({
+    const { owner } = options;
+    const params = {
       TableName: this.tableName,
-      KeyConditionExpression: "#partitionKey = :username",
+      KeyConditionExpression: "#pk = :pk",
       ExpressionAttributeNames: {
-        "#partitionKey": "qut-username"
+        "#pk": "qut-username"
       },
       ExpressionAttributeValues: {
-        ":username": this.qutUsername
+        ":pk": this.qutUsername
       }
-    });
+    };
+    
+    if (owner) {
+      // Add filter for specific owner
+      params.FilterExpression = "begins_with(#sk, :ownerPrefix)";
+      params.ExpressionAttributeNames["#sk"] = "imageId";
+      params.ExpressionAttributeValues[":ownerPrefix"] = `${owner}#`;
+    }
+    
+    const command = new DynamoDBLib.QueryCommand(params);
 
     try {
       const response = await this.docClient.send(command);
@@ -337,15 +379,14 @@ class VisuaSortDynamoService {
     }
   }
 
-  async updateImage(id, updates) {
-    const image = await this.getImageById(id);
-    if (!image) return;
-
+  async updateImage(id, owner, updates) {
     const updateExpressions = [];
+    const expressionAttributeNames = {};
     const expressionAttributeValues = {};
     
     Object.keys(updates).forEach(key => {
-      updateExpressions.push(`${key} = :${key}`);
+      updateExpressions.push(`#${key} = :${key}`);
+      expressionAttributeNames[`#${key}`] = key;
       expressionAttributeValues[`:${key}`] = updates[key];
     });
 
@@ -353,14 +394,26 @@ class VisuaSortDynamoService {
       TableName: this.tableName,
       Key: {
         "qut-username": this.qutUsername,
-        "imageId": `${image.owner}#${image.id}`
+        "imageId": `${owner}#${id}`
       },
       UpdateExpression: `SET ${updateExpressions.join(', ')}`,
-      ExpressionAttributeValues: expressionAttributeValues
+      ExpressionAttributeNames: expressionAttributeNames,
+      ExpressionAttributeValues: expressionAttributeValues,
+      ReturnValues: 'ALL_NEW'
     });
 
     try {
-      await this.docClient.send(command);
+      const result = await this.docClient.send(command);
+      
+      // Invalidate cache
+      try {
+        await elasticacheService.invalidateUserImages(owner);
+        await elasticacheService.cacheImageMetadata(id, result.Attributes);
+      } catch (cacheError) {
+        console.warn('Cache invalidation failed:', cacheError.message);
+      }
+      
+      return result.Attributes;
     } catch (error) {
       console.error('Database update operation failed:', error);
       throw error;

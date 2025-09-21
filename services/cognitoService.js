@@ -6,10 +6,14 @@ class CognitoService {
   constructor() {
     this.client = new CognitoIdentityProviderClient({ region: 'ap-southeast-2' });
     this.verifier = null;
+    this.config = null;
   }
 
   async getConfig() {
-    return await secretsService.getCognitoConfig();
+    if (!this.config) {
+      this.config = await secretsService.getCognitoConfig();
+    }
+    return this.config;
   }
 
   async getJwtVerifier() {
@@ -52,7 +56,8 @@ class CognitoService {
       };
     } catch (error) {
       console.error('Cognito SignUp error:', error);
-      throw new Error(`Registration failed: ${error.message}`);
+      const message = this.sanitizeError(error, 'Registration failed');
+      throw new Error(message);
     }
   }
 
@@ -73,7 +78,8 @@ class CognitoService {
       };
     } catch (error) {
       console.error('Cognito ConfirmSignUp error:', error);
-      throw new Error(`Confirmation failed: ${error.message}`);
+      const message = this.sanitizeError(error, 'Email confirmation failed');
+      throw new Error(message);
     }
   }
 
@@ -109,7 +115,7 @@ class CognitoService {
           user: {
             username: payload['cognito:username'],
             email: payload.email,
-            role: payload['custom:role'] || 'user',
+            role: this.determineRole(payload['cognito:groups'] || []),
             groups: payload['cognito:groups'] || [],
             sub: payload.sub
           }
@@ -119,7 +125,8 @@ class CognitoService {
       throw new Error('Authentication failed - no tokens returned');
     } catch (error) {
       console.error('Cognito Authentication error:', error);
-      throw new Error(`Login failed: ${error.message}`);
+      const message = this.sanitizeError(error, 'Login failed');
+      throw new Error(message);
     }
   }
 
@@ -129,14 +136,13 @@ class CognitoService {
       const payload = await verifier.verify(idToken);
       
       const groups = payload['cognito:groups'] || [];
-      const role = groups.includes('Administrators') ? 'admin' : 'user';
       
       return {
         valid: true,
         user: {
           username: payload['cognito:username'],
           email: payload.email,
-          role: role,
+          role: this.determineRole(groups),
           groups: groups,
           sub: payload.sub
         }
@@ -163,7 +169,7 @@ class CognitoService {
       }
     ];
 
-    for (const group of groups) {
+    const groupPromises = groups.map(async (group) => {
       try {
         const command = new CreateGroupCommand({
           UserPoolId: config.userPoolId,
@@ -179,10 +185,33 @@ class CognitoService {
           console.error(`❌ Failed to create group ${group.GroupName}:`, error.message);
         }
       }
-    }
+    });
+    
+    await Promise.all(groupPromises);
+  }
+
+  determineRole(groups) {
+    return groups.includes('Administrators') ? 'admin' : 'user';
+  }
+
+  sanitizeError(error, defaultMessage) {
+    // Map specific Cognito errors to user-friendly messages
+    const errorMap = {
+      'UserNotConfirmedException': 'Please confirm your email before logging in',
+      'NotAuthorizedException': 'Invalid username or password',
+      'UsernameExistsException': 'Username already exists',
+      'InvalidParameterException': 'Invalid input provided',
+      'CodeMismatchException': 'Invalid confirmation code',
+      'ExpiredCodeException': 'Confirmation code has expired'
+    };
+    
+    return errorMap[error.name] || defaultMessage;
   }
 
   async addUserToGroup(username, groupName) {
+    if (!username || !groupName) {
+      throw new Error('Username and group name are required');
+    }
     const config = await this.getConfig();
     
     try {

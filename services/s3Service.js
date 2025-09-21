@@ -29,7 +29,7 @@ class S3Service {
     return Buffer.from(await response.Body.transformToByteArray());
   }
 
-  async getPresignedUrl(key, expiresIn = 3600) {
+  async getPresignedUrl(key, expiresIn = 300) {
     const command = new GetObjectCommand({
       Bucket: this.bucketName,
       Key: key
@@ -45,7 +45,7 @@ class S3Service {
     }));
   }
 
-  async getPresignedUploadUrl(key, contentType = 'image/jpeg', expiresIn = 3600) {
+  async getPresignedUploadUrl(key, contentType = 'image/jpeg', expiresIn = 300) {
     const command = new PutObjectCommand({
       Bucket: this.bucketName,
       Key: key,

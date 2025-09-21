@@ -14,7 +14,7 @@ exports.register = async (req, res) => {
     res.status(201).json(result);
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ error: error.message || 'Registration failed' });
   }
 };
 
@@ -32,7 +32,7 @@ exports.confirmRegistration = async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('Confirmation error:', error);
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ error: error.message || 'Confirmation failed' });
   }
 };
 
@@ -53,7 +53,7 @@ exports.login = async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(401).json({ error: error.message });
+    res.status(401).json({ error: error.message || 'Login failed' });
   }
 };
 

@@ -1,5 +1,4 @@
-const jwt = require('jsonwebtoken');
-const secretsService = require('../services/secretsService');
+const cognitoService = require('../services/cognitoService');
 
 module.exports = async (req, res, next) => {
   const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -9,11 +8,11 @@ module.exports = async (req, res, next) => {
   }
 
   try {
-    const jwtSecret = await secretsService.getJwtSecret();
-    const decoded = jwt.verify(token, jwtSecret);
+    const decoded = await cognitoService.verifyToken(token);
     req.user = decoded;
     next();
   } catch (error) {
+    console.error('Token verification failed:', error);
     res.status(401).json({ error: 'Invalid token' });
   }
 };

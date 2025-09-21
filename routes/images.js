@@ -29,7 +29,7 @@ router.post('/stage', cognitoAuth, upload.single('image'), imageController.stage
 router.post('/process/:imageId', cognitoAuth, imageController.processStagedImage);
 
 // Error handling middleware for multer
-router.post('/upload', hybridAuth, (req, res, next) => {
+router.post('/upload', cognitoAuth, (req, res, next) => {
   upload.single('image')(req, res, (err) => {
     if (err) {
       console.error('Multer error:', err.message);

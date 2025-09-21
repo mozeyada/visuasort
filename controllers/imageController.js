@@ -123,7 +123,7 @@ exports.getImages = async (req, res) => {
 
 exports.getImageById = async (req, res) => {
   try {
-    const image = await dbService.getImageById(req.params.id);
+    const image = await dbService.getImageById(req.params.id, req.user.username);
     if (!image || image.owner !== req.user.username) {
       return res.status(404).json({ error: 'Image not found' });
     }
@@ -151,7 +151,7 @@ exports.getImageById = async (req, res) => {
 
 exports.deleteImage = async (req, res) => {
   try {
-    const image = await dbService.getImageById(req.params.id);
+    const image = await dbService.getImageById(req.params.id, req.user.username);
     if (!image || image.owner !== req.user.username) {
       return res.status(404).json({ error: 'Image not found' });
     }
@@ -175,7 +175,7 @@ exports.deleteImage = async (req, res) => {
     }
     
     // Delete from database
-    await dbService.deleteImage(req.params.id);
+    await dbService.deleteImage(req.params.id, req.user.username);
     res.json({ message: 'Image deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete image' });
@@ -235,7 +235,7 @@ exports.getAllImagesAdmin = async (req, res) => {
     }
     
     const { page = 1, limit = 10, sort = 'uploadDate', order = 'desc' } = req.query;
-    const images = await dbService.getAllImages({ page: parseInt(page), limit: parseInt(limit), sort, order });
+    const images = await dbService.getAllImages({ page: parseInt(page), limit: parseInt(limit), sort, order, owner: null });
     
     // Add S3 URLs for admin view
     const imagesWithUrls = await Promise.all(images.data.map(async (image) => {
@@ -272,7 +272,8 @@ exports.deleteImageAdmin = async (req, res) => {
       return res.status(403).json({ error: 'Admin access required' });
     }
     
-    const image = await dbService.getImageById(req.params.id);
+    // First scan to find the image since admin doesn't know the owner
+    const image = await dbService.getImageById(req.params.id, null);
     if (!image) {
       return res.status(404).json({ error: 'Image not found' });
     }
@@ -295,7 +296,7 @@ exports.deleteImageAdmin = async (req, res) => {
       console.log('S3 deletion warning:', err.message);
     }
     
-    await dbService.deleteImage(req.params.id);
+    await dbService.deleteImage(req.params.id, image.owner);
     res.json({ message: `Image deleted by admin from user: ${image.owner}` });
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete image' });
@@ -306,7 +307,7 @@ exports.deleteImageAdmin = async (req, res) => {
 exports.processImage = async (req, res) => {
   try {
     const imageId = req.params.id;
-    const image = await dbService.getImageById(imageId);
+    const image = await dbService.getImageById(imageId, req.user.username);
     
     if (!image) {
       return res.status(404).json({ error: 'Image not found' });
@@ -341,7 +342,7 @@ exports.updateImage = async (req, res) => {
     const { id } = req.params;
     const { displayName, tags } = req.body;
     
-    const image = await dbService.getImageById(id);
+    const image = await dbService.getImageById(id, req.user.username);
     if (!image) {
       return res.status(404).json({ error: 'Image not found' });
     }
@@ -354,9 +355,9 @@ exports.updateImage = async (req, res) => {
     if (displayName !== undefined) updates.displayName = displayName;
     if (tags !== undefined) updates.tags = Array.isArray(tags) ? tags : [tags];
     
-    await dbService.updateImage(id, updates);
+    await dbService.updateImage(id, image.owner, updates);
     
-    const updatedImage = await dbService.getImageById(id);
+    const updatedImage = await dbService.getImageById(id, image.owner);
     res.json(updatedImage);
   } catch (error) {
     console.error('Update image error:', error);
@@ -370,7 +371,7 @@ exports.patchImage = async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
     
-    const image = await dbService.getImageById(id);
+    const image = await dbService.getImageById(id, req.user.username);
     if (!image) {
       return res.status(404).json({ error: 'Image not found' });
     }
@@ -393,9 +394,9 @@ exports.patchImage = async (req, res) => {
       return res.status(400).json({ error: 'No valid fields to update' });
     }
     
-    await dbService.updateImage(id, filteredUpdates);
+    await dbService.updateImage(id, image.owner, filteredUpdates);
     
-    const updatedImage = await dbService.getImageById(id);
+    const updatedImage = await dbService.getImageById(id, image.owner);
     res.json(updatedImage);
   } catch (error) {
     console.error('Patch image error:', error);
@@ -461,7 +462,7 @@ exports.reEnhanceImage = async (req, res) => {
     const { id } = req.params;
     const { autoEnhance, addWatermark, applyFilter } = req.body;
     
-    const originalImage = await dbService.getImageById(id);
+    const originalImage = await dbService.getImageById(id, req.user.username);
     if (!originalImage) {
       return res.status(404).json({ error: 'Image not found' });
     }
@@ -556,7 +557,7 @@ exports.getPresignedUploadUrl = async (req, res) => {
 // Get pre-signed URL for image download
 exports.getPresignedDownloadUrl = async (req, res) => {
   try {
-    const image = await dbService.getImageById(req.params.id);
+    const image = await dbService.getImageById(req.params.id, req.user.username);
     if (!image || image.owner !== req.user.username) {
       return res.status(404).json({ error: 'Image not found' });
     }

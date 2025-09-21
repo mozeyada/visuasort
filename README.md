@@ -87,37 +87,43 @@ docker run -p 3000:3000 -e IMAGGA_API_KEY=your_key visuasort
 BASE_URL=http://your-ec2-ip:3000 node tests/cpu-load-test.js
 ```
 
-## Environment Variables
+## Cloud Configuration
 
+### Production (AWS Services)
+- **Secrets Manager**: `n11693860-visuasort-secrets` (API keys, JWT secret, Cognito config)
+- **Parameter Store**: `/n11693860/visuasort/*` (app URLs, processing settings)
+- **Authentication**: AWS Cognito with email verification and JWT
+- **Storage**: S3 private buckets with 5-minute pre-signed URLs
+- **Database**: DynamoDB with optimized queries and throttling handling
+- **Caching**: ElastiCache Memcached for performance optimization
+- **DNS**: Route53 CNAME record for `n11693860-visuasort.cab432.com`
+
+### Local Development
 ```bash
-# Required
-JWT_SECRET=your_jwt_secret
-
 # AWS Configuration (local development only)
 AWS_ACCESS_KEY_ID=your_access_key
 AWS_SECRET_ACCESS_KEY=your_secret_key
 AWS_SESSION_TOKEN=your_session_token
 AWS_REGION=ap-southeast-2
-
-# Optional (for AI tagging)
-IMAGGA_API_KEY=your_imagga_key
-IMAGGA_API_SECRET=your_imagga_secret
-HUGGINGFACE_API_KEY=your_hf_key
 ```
 
 ## Architecture
 
-- **Backend**: Node.js + Express + DynamoDB
+- **Backend**: Node.js + Express + AWS Cloud Services
 - **Frontend**: React (built into backend)
+- **Authentication**: AWS Cognito + JWT with Admin/User roles
+- **Storage**: S3 private buckets with secure pre-signed URLs (5-min expiry)
+- **Database**: DynamoDB with optimized QueryCommand and throttling
+- **Caching**: ElastiCache Memcached for performance optimization
+- **Configuration**: Secrets Manager + Parameter Store integration
 - **Image Processing**: Sharp with professional enhancement service
   - Auto-enhancement with statistical analysis
   - Artistic filters (vintage, dramatic, B&W, soft portrait)
   - Watermarking with SVG composite
   - EXIF orientation preservation
   - Multi-format output (JPEG, WebP, thumbnails)
-- **Authentication**: JWT with role-based access
-- **AI Integration**: Imagga + Hugging Face APIs
-- **Deployment**: Docker single process
+- **AI Integration**: Imagga + Hugging Face APIs with fallback
+- **Deployment**: Docker + ECR + EC2 with Infrastructure as Code
 
 ## Technical Highlights
 
@@ -131,8 +137,12 @@ HUGGINGFACE_API_KEY=your_hf_key
 - **User Login**: JWT with Admin/User role distinctions
 
 ### Advanced Features
+- **Cloud Security**: Private S3 buckets, secure pre-signed URLs, sanitized error handling
+- **Performance Optimization**: DynamoDB QueryCommand, ElastiCache caching, throttling handling
+- **Stateless Design**: All data in cloud services, no local storage violations
 - **Extended API**: Pagination, sorting, filtering consistently implemented
-- **External APIs**: Imagga + Hugging Face dual AI integration
+- **External APIs**: Imagga + Hugging Face dual AI integration with graceful fallback
 - **Custom Processing**: Professional image enhancement algorithms
 - **Web Client**: React interface with all API endpoints
 - **Infrastructure as Code**: CloudFormation + Docker Compose (full deployment)
+- **DNS Management**: Route53 CNAME record for custom subdomain
