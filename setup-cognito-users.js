@@ -4,23 +4,21 @@ async function setupTestUsers() {
   console.log('Setting up test users in Cognito...');
   
   try {
-    // Create admin user
+    // Create admin user with your real email
     console.log('Creating admin user...');
     const adminResult = await cognitoService.signUp(
-      'admin@visuasort.com',
+      'admin',
       'AdminPass123!',
-      'admin@visuasort.com',
-      'admin'
+      'n11693860@qut.edu.au' // Use your QUT email
     );
     console.log('Admin user created:', adminResult.message);
     
     // Create regular user
     console.log('Creating regular user...');
     const userResult = await cognitoService.signUp(
-      'user@visuasort.com',
+      'user',
       'UserPass123!',
-      'user@visuasort.com',
-      'user'
+      'n11693860@qut.edu.au' // Use your QUT email
     );
     console.log('Regular user created:', userResult.message);
     

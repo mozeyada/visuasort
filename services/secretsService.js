@@ -1,4 +1,5 @@
 const { SecretsManagerClient, GetSecretValueCommand } = require("@aws-sdk/client-secrets-manager");
+require('dotenv').config();
 
 class SecretsService {
   constructor() {
@@ -10,6 +11,20 @@ class SecretsService {
   }
 
   async getAllSecrets() {
+    // Use .env for local development
+    if (process.env.NODE_ENV === 'development' && process.env.COGNITO_USER_POOL_ID) {
+      console.log('✅ Using local .env configuration');
+      return {
+
+        IMAGGA_API_KEY: process.env.IMAGGA_API_KEY,
+        IMAGGA_API_SECRET: process.env.IMAGGA_API_SECRET,
+        HUGGINGFACE_API_KEY: process.env.HUGGINGFACE_API_KEY,
+        COGNITO_USER_POOL_ID: process.env.COGNITO_USER_POOL_ID,
+        COGNITO_CLIENT_ID: process.env.COGNITO_CLIENT_ID,
+        COGNITO_CLIENT_SECRET: process.env.COGNITO_CLIENT_SECRET
+      };
+    }
+
     const now = Date.now();
     
     // Return cached secrets if still valid
@@ -31,10 +46,7 @@ class SecretsService {
     return this.cache;
   }
 
-  async getJwtSecret() {
-    const secrets = await this.getAllSecrets();
-    return secrets.JWT_SECRET;
-  }
+
 
   async getImaggaCredentials() {
     const secrets = await this.getAllSecrets();
@@ -53,7 +65,8 @@ class SecretsService {
     const secrets = await this.getAllSecrets();
     return {
       userPoolId: secrets.COGNITO_USER_POOL_ID,
-      clientId: secrets.COGNITO_CLIENT_ID
+      clientId: secrets.COGNITO_CLIENT_ID,
+      clientSecret: secrets.COGNITO_CLIENT_SECRET || null
     };
   }
 }

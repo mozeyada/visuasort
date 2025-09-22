@@ -1,5 +1,6 @@
-const { CognitoIdentityProviderClient, SignUpCommand, ConfirmSignUpCommand, InitiateAuthCommand, CreateGroupCommand, AdminAddUserToGroupCommand } = require('@aws-sdk/client-cognito-identity-provider');
+const { CognitoIdentityProviderClient, SignUpCommand, ConfirmSignUpCommand, InitiateAuthCommand, CreateGroupCommand, AdminAddUserToGroupCommand, AdminCreateUserCommand, AdminSetUserPasswordCommand, RespondToAuthChallengeCommand } = require('@aws-sdk/client-cognito-identity-provider');
 const { CognitoJwtVerifier } = require('aws-jwt-verify');
+const crypto = require('crypto');
 const secretsService = require('./secretsService');
 
 class CognitoService {
@@ -16,6 +17,13 @@ class CognitoService {
     return this.config;
   }
 
+  secretHash(clientId, clientSecret, username) {
+    if (!clientSecret) return undefined;
+    const hasher = crypto.createHmac('sha256', clientSecret);
+    hasher.update(`${username}${clientId}`);
+    return hasher.digest('base64');
+  }
+
   async getJwtVerifier() {
     if (!this.verifier) {
       const config = await this.getConfig();
@@ -28,10 +36,10 @@ class CognitoService {
     return this.verifier;
   }
 
-  async signUp(username, password, email, role = 'user') {
+  async signUp(username, password, email) {
     const config = await this.getConfig();
     
-    const command = new SignUpCommand({
+    const params = {
       ClientId: config.clientId,
       Username: username,
       Password: password,
@@ -39,16 +47,28 @@ class CognitoService {
         {
           Name: 'email',
           Value: email
-        },
-        {
-          Name: 'custom:role',
-          Value: role
         }
       ]
-    });
+    };
+    
+    // Add SecretHash if client secret exists
+    if (config.clientSecret) {
+      params.SecretHash = this.secretHash(config.clientId, config.clientSecret, username);
+    }
+    
+    const command = new SignUpCommand(params);
 
     try {
       const response = await this.client.send(command);
+      
+      // Add user to 'users' group after successful registration
+      try {
+        await this.addUserToGroup(username, 'users');
+      } catch (groupError) {
+        console.warn('Failed to add user to group:', groupError.message);
+        // Don't fail registration if group assignment fails
+      }
+      
       return {
         success: true,
         userSub: response.UserSub,
@@ -64,11 +84,18 @@ class CognitoService {
   async confirmSignUp(username, confirmationCode) {
     const config = await this.getConfig();
     
-    const command = new ConfirmSignUpCommand({
+    const params = {
       ClientId: config.clientId,
       Username: username,
       ConfirmationCode: confirmationCode
-    });
+    };
+    
+    // Add SecretHash if client secret exists
+    if (config.clientSecret) {
+      params.SecretHash = this.secretHash(config.clientId, config.clientSecret, username);
+    }
+    
+    const command = new ConfirmSignUpCommand(params);
 
     try {
       await this.client.send(command);
@@ -86,17 +113,67 @@ class CognitoService {
   async authenticate(username, password) {
     const config = await this.getConfig();
     
+    const authParams = {
+      USERNAME: username,
+      PASSWORD: password
+    };
+    
+    // Add SECRET_HASH if client secret exists
+    if (config.clientSecret) {
+      authParams.SECRET_HASH = this.secretHash(config.clientId, config.clientSecret, username);
+    }
+    
     const command = new InitiateAuthCommand({
       AuthFlow: 'USER_PASSWORD_AUTH',
       ClientId: config.clientId,
-      AuthParameters: {
-        USERNAME: username,
-        PASSWORD: password
-      }
+      AuthParameters: authParams
     });
 
     try {
       const response = await this.client.send(command);
+      
+      // Handle NEW_PASSWORD_REQUIRED challenge
+      if (response.ChallengeName === 'NEW_PASSWORD_REQUIRED') {
+        const challengeParams = {
+          NEW_PASSWORD: password, // Use same password as permanent
+        };
+        
+        if (config.clientSecret) {
+          challengeParams.SECRET_HASH = this.secretHash(config.clientId, config.clientSecret, username);
+        }
+        
+        const challengeCommand = new RespondToAuthChallengeCommand({
+          ClientId: config.clientId,
+          ChallengeName: 'NEW_PASSWORD_REQUIRED',
+          Session: response.Session,
+          ChallengeResponses: challengeParams
+        });
+        
+        const challengeResponse = await this.client.send(challengeCommand);
+        
+        if (challengeResponse.AuthenticationResult) {
+          const { IdToken, AccessToken, RefreshToken } = challengeResponse.AuthenticationResult;
+          
+          const verifier = await this.getJwtVerifier();
+          const payload = await verifier.verify(IdToken);
+          
+          return {
+            success: true,
+            tokens: {
+              idToken: IdToken,
+              accessToken: AccessToken,
+              refreshToken: RefreshToken
+            },
+            user: {
+              username: payload['cognito:username'],
+              email: payload.email,
+              role: this.determineRole(payload['cognito:groups'] || []),
+              groups: payload['cognito:groups'] || [],
+              sub: payload.sub
+            }
+          };
+        }
+      }
       
       if (response.AuthenticationResult) {
         const { IdToken, AccessToken, RefreshToken } = response.AuthenticationResult;
@@ -158,13 +235,13 @@ class CognitoService {
     
     const groups = [
       {
-        GroupName: 'Administrators',
-        Description: 'Admin users with full access to all features',
+        GroupName: 'admins',
+        Description: 'Administrator users',
         Precedence: 1
       },
       {
-        GroupName: 'Users', 
-        Description: 'Regular users with standard access',
+        GroupName: 'users', 
+        Description: 'Regular users',
         Precedence: 2
       }
     ];
@@ -191,7 +268,7 @@ class CognitoService {
   }
 
   determineRole(groups) {
-    return groups.includes('Administrators') ? 'admin' : 'user';
+    return groups.includes('admins') ? 'admin' : 'user';
   }
 
   sanitizeError(error, defaultMessage) {

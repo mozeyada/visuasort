@@ -2,7 +2,7 @@ const cognitoService = require('../services/cognitoService');
 
 exports.register = async (req, res) => {
   try {
-    const { username, password, email, role } = req.body;
+    const { username, password, email } = req.body;
     
     if (!username || !password || !email) {
       return res.status(400).json({ 
@@ -10,7 +10,7 @@ exports.register = async (req, res) => {
       });
     }
 
-    const result = await cognitoService.signUp(username, password, email, role);
+    const result = await cognitoService.signUp(username, password, email);
     res.status(201).json(result);
   } catch (error) {
     console.error('Registration error:', error);

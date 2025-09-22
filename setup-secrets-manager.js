@@ -5,12 +5,12 @@ async function setupSecretsManager() {
   
   const secretName = 'n11693860-visuasort-secrets';
   const secretValue = {
-    JWT_SECRET: 'your-jwt-secret-here',
     IMAGGA_API_KEY: 'your-imagga-api-key',
     IMAGGA_API_SECRET: 'your-imagga-api-secret',
     HUGGINGFACE_API_KEY: 'your-huggingface-token',
     COGNITO_USER_POOL_ID: 'your-cognito-user-pool-id',
-    COGNITO_CLIENT_ID: 'your-cognito-client-id'
+    COGNITO_CLIENT_ID: 'your-cognito-client-id',
+    COGNITO_CLIENT_SECRET: 'your-cognito-client-secret'
   };
 
   console.log('Setting up Secrets Manager...');

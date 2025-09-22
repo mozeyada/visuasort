@@ -26,12 +26,6 @@ async function createCognitoResources() {
         AttributeDataType: 'String',
         Required: true,
         Mutable: true
-      },
-      {
-        Name: 'custom:role',
-        AttributeDataType: 'String',
-        Required: false,
-        Mutable: true
       }
     ]
   });

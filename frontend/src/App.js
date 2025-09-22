@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import Login from './components/Login';
+import Auth from './components/Auth';
 import Gallery from './components/Gallery';
 import { authService } from './services/authService';
 import './App.css';
@@ -48,10 +48,15 @@ function App() {
     return <div className="loading">Loading...</div>;
   }
 
+  const handleAuthLogin = (userData) => {
+    setUser(userData);
+    setIsAuthenticated(true);
+  };
+
   return (
     <div className="App">
       {!isAuthenticated ? (
-        <Login onLogin={handleLogin} />
+        <Auth onLogin={handleAuthLogin} />
       ) : (
         <Gallery token={token} user={user} onLogout={handleLogout} />
       )}
