@@ -48,9 +48,16 @@ function App() {
     return <div className="loading">Loading...</div>;
   }
 
-  const handleAuthLogin = (userData) => {
-    setUser(userData);
-    setIsAuthenticated(true);
+  const handleAuthLogin = (authData) => {
+    if (authData.token && authData.user) {
+      setToken(authData.token);
+      setUser(authData.user);
+      setIsAuthenticated(true);
+    } else {
+      // Fallback for old format
+      setUser(authData);
+      setIsAuthenticated(true);
+    }
   };
 
   return (

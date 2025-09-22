@@ -60,7 +60,8 @@ const Auth = ({ onLogin }) => {
           setMode('login');
         } else {
           localStorage.setItem('token', data.token);
-          onLogin(data.user);
+          localStorage.setItem('user', JSON.stringify(data.user));
+          onLogin({ token: data.token, user: data.user });
         }
       } else {
         setMessage(data.error || 'Operation failed');

@@ -60,10 +60,11 @@
 - **Deployment**: `infrastructure/deploy.sh`
 
 ### 5. Identity Management: User Groups (2 marks) ✅
-- **Implementation**: Cognito User Groups
-- **Groups**: Administrators, Users
-- **Setup**: `setup-cognito-groups.js`
-- **Integration**: Role-based access control
+- **Implementation**: Cognito User Groups (users/admins)
+- **Auto-Assignment**: New users added to 'users' group
+- **Manual Assignment**: Admins assigned to 'admins' group
+- **JWT Integration**: Groups claim determines permissions
+- **Setup**: `assign-user-groups.js` for existing users
 
 ### 6. S3 Pre-signed URLs (2 marks) ✅
 - **Implementation**: `s3Service.getPresignedUrl()`
