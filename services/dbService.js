@@ -5,7 +5,7 @@
  * Includes in-memory caching for performance optimization
  */
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, PutCommand, QueryCommand, DeleteCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 const elasticacheService = require('./elasticacheService');
 
 class VisuaSortDynamoService {
@@ -33,7 +33,7 @@ class VisuaSortDynamoService {
   }
 
   async saveImage(imageData) {
-    const command = new DynamoDBLib.PutCommand({
+    const command = new PutCommand({
       TableName: this.tableName,
       Item: {
         "qut-username": this.qutUsername, // Required partition key for QUT account
@@ -74,7 +74,7 @@ class VisuaSortDynamoService {
       console.warn('Cache read failed:', cacheError.message);
     }
     
-    const command = new DynamoDBLib.QueryCommand({
+    const command = new QueryCommand({
       TableName: this.tableName,
       KeyConditionExpression: "#partitionKey = :username",
       FilterExpression: "#owner = :owner",
@@ -119,7 +119,7 @@ class VisuaSortDynamoService {
       console.warn('Cache read failed:', cacheError.message);
     }
     
-    const command = new DynamoDBLib.QueryCommand({
+    const command = new QueryCommand({
       TableName: this.tableName,
       KeyConditionExpression: "#pk = :pk AND #sk = :sk",
       ExpressionAttributeNames: {
@@ -153,7 +153,7 @@ class VisuaSortDynamoService {
   }
 
   async deleteImage(id, owner) {
-    const command = new DynamoDBLib.DeleteCommand({
+    const command = new DeleteCommand({
       TableName: this.tableName,
       Key: {
         "qut-username": this.qutUsername,
@@ -177,11 +177,11 @@ class VisuaSortDynamoService {
     }
   }
 
-  async updateImageTags(id, tags) {
-    const image = await this.getImageById(id, image?.owner);
+  async updateImageTags(id, tags, owner) {
+    const image = await this.getImageById(id, owner);
     if (!image) return;
 
-    const command = new DynamoDBLib.UpdateCommand({
+    const command = new UpdateCommand({
       TableName: this.tableName,
       Key: {
         "qut-username": this.qutUsername,
@@ -210,7 +210,7 @@ class VisuaSortDynamoService {
   }
 
   async searchImages(query, owner, options = {}) {
-    const command = new DynamoDBLib.QueryCommand({
+    const command = new QueryCommand({
       TableName: this.tableName,
       KeyConditionExpression: "#partitionKey = :username",
       FilterExpression: "#owner = :owner AND (contains(filename, :query) OR contains(tags, :query))",
@@ -235,7 +235,7 @@ class VisuaSortDynamoService {
   }
 
   async filterImages(filters, owner, options = {}) {
-    const command = new DynamoDBLib.QueryCommand({
+    const command = new QueryCommand({
       TableName: this.tableName,
       KeyConditionExpression: "#partitionKey = :username",
       FilterExpression: "#owner = :owner",
@@ -302,7 +302,7 @@ class VisuaSortDynamoService {
     }
     
     try {
-      const command = new DynamoDBLib.QueryCommand({
+      const command = new QueryCommand({
         TableName: this.tableName,
         KeyConditionExpression: "#partitionKey = :username",
         FilterExpression: "#owner = :owner",
@@ -367,7 +367,7 @@ class VisuaSortDynamoService {
       params.ExpressionAttributeValues[":ownerPrefix"] = `${owner}#`;
     }
     
-    const command = new DynamoDBLib.QueryCommand(params);
+    const command = new QueryCommand(params);
 
     try {
       const response = await this.docClient.send(command);
@@ -390,7 +390,7 @@ class VisuaSortDynamoService {
       expressionAttributeValues[`:${key}`] = updates[key];
     });
 
-    const command = new DynamoDBLib.UpdateCommand({
+    const command = new UpdateCommand({
       TableName: this.tableName,
       Key: {
         "qut-username": this.qutUsername,

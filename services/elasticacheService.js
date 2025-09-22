@@ -14,11 +14,18 @@ class CacheService {
   async initialize() {
     if (this.initialized) return;
     
-    const parameterService = require('./parameterService');
-    const elasticacheEndpoint = await parameterService.getParameter('/n11693860/visuasort/elasticache-endpoint');
+    let elasticacheEndpoint;
+    try {
+      const parameterService = require('./parameterService');
+      elasticacheEndpoint = await parameterService.getParameter('/n11693860/visuasort/elasticache-endpoint');
+    } catch (error) {
+      console.warn('Parameter Store failed, using fallback endpoint');
+    }
     
+    // Fallback to hardcoded endpoint if Parameter Store fails
     if (!elasticacheEndpoint) {
-      throw new Error('ElastiCache endpoint not found in Parameter Store');
+      elasticacheEndpoint = 'visuasort.km2jzi.cfg.apse2.cache.amazonaws.com:11211';
+      console.log('Using fallback ElastiCache endpoint');
     }
     this.memcached = new Memcached(elasticacheEndpoint, {
       timeout: 1000,
