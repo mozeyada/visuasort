@@ -92,7 +92,7 @@ BASE_URL=http://your-ec2-ip:3000 node tests/cpu-load-test.js
 ### Production (AWS Services)
 - **Secrets Manager**: `n11693860-visuasort-secrets` (API keys, JWT secret, Cognito config)
 - **Parameter Store**: `/n11693860/visuasort/*` (app URLs, processing settings)
-- **Authentication**: AWS Cognito with email verification, JWT, and Groups (users/admins)
+- **Authentication**: AWS Cognito with email verification, multi-factor authentication, JWT, and Groups (users/admins)
 - **Storage**: S3 private buckets with 5-minute pre-signed URLs
 - **Database**: DynamoDB with optimized queries and throttling handling
 - **Caching**: ElastiCache Memcached for performance optimization
@@ -138,6 +138,7 @@ AWS_REGION=ap-southeast-2
 
 ### Advanced Features
 - **Cloud Security**: Private S3 buckets, secure pre-signed URLs, sanitized error handling
+- **Multi-Factor Authentication**: Email-based MFA for enhanced security
 - **Performance Optimization**: DynamoDB QueryCommand, ElastiCache caching, throttling handling
 - **Stateless Design**: All data in cloud services, no local storage violations
 - **Extended API**: Pagination, sorting, filtering consistently implemented

@@ -1,38 +1,56 @@
+# Dependencies
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Production builds
+build/
+dist/
+
+# Environment variables
 .env
 .env.local
-uploads/*.jpg
-uploads/*.png
-uploads/*.webp
-!uploads/.gitkeep
-tests/stage_*.jpg
-visuasort@*
-aws-deploy.sh
-deploy-command.txt
-deploy-commands.bat
-final-load-test.js
-data/db.json
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Problematic files
-visuasort-submission/
-frontend/build/
-.amazonq/
+# Logs
+logs
+*.log
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# AWS credentials
+.aws/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Assessment files (not for GitHub)
 SUBMISSION_CHECKLIST.md
-VIDEO_SCRIPT_FULL_MARKS.md
-DEPLOYMENT.md
-deploy-command.txt
-deploy-commands.bat
-final-load-test.js
+.amazonq/
+A2_response_to_criteria.md
 
 # Temporary files
-q-dev-chat-*.md
-server.log
-
-# Assessment documentation (keep local only)
-ASSESSMENT-*.md
-
-# Test files that shouldn't be in repo
-test.png
-test.jpg
-*.test.js
-ASSESSMENT_CHECKLIST.md
+*.tmp
+*.temp

@@ -13,8 +13,8 @@ exports.uploadImage = async (req, res) => {
       return res.status(400).json({ error: 'No image file provided' });
     }
     
-    const userId = req.user.username;
-    const imageId = Date.now().toString().slice(-6);
+    const userId = req.user.sub; // Use Cognito sub (UUID) consistently
+    const imageId = Date.now().toString(); // Use full timestamp to match S3 structure
     
     // Get processing options from request
     const enhanceOptions = {
@@ -63,7 +63,7 @@ exports.uploadImage = async (req, res) => {
       tags: useAI ? ['processing...'] : ['Personal'],
       uploadDate: new Date().toISOString(),
       size: fileSize,
-      owner: req.user.username,
+      owner: userId, // Use same identifier as S3 for consistency
       hasEnhancements: enhanceOptions.autoEnhance || enhanceOptions.addWatermark || enhanceOptions.applyFilter !== 'none'
     };
 
@@ -91,7 +91,8 @@ exports.uploadImage = async (req, res) => {
 exports.getImages = async (req, res) => {
   try {
     const { page = 1, limit = 10, sort = 'uploadDate', order = 'desc' } = req.query;
-    const images = await dbService.getImages(req.user.username, { page: parseInt(page), limit: parseInt(limit), sort, order });
+    const userId = req.user.sub;
+    const images = await dbService.getImages(userId, { page: parseInt(page), limit: parseInt(limit), sort, order });
     
     // Add S3 URLs for frontend
     const imagesWithUrls = await Promise.all(images.data.map(async (image) => {
@@ -123,8 +124,9 @@ exports.getImages = async (req, res) => {
 
 exports.getImageById = async (req, res) => {
   try {
-    const image = await dbService.getImageById(req.params.id, req.user.username);
-    if (!image || image.owner !== req.user.username) {
+    const userId = req.user.sub;
+    const image = await dbService.getImageById(req.params.id, userId);
+    if (!image || image.owner !== userId) {
       return res.status(404).json({ error: 'Image not found' });
     }
     
@@ -151,8 +153,9 @@ exports.getImageById = async (req, res) => {
 
 exports.deleteImage = async (req, res) => {
   try {
-    const image = await dbService.getImageById(req.params.id, req.user.username);
-    if (!image || image.owner !== req.user.username) {
+    const userId = req.user.sub;
+    const image = await dbService.getImageById(req.params.id, userId);
+    if (!image || image.owner !== userId) {
       return res.status(404).json({ error: 'Image not found' });
     }
     
@@ -175,7 +178,7 @@ exports.deleteImage = async (req, res) => {
     }
     
     // Delete from database
-    await dbService.deleteImage(req.params.id, req.user.username);
+    await dbService.deleteImage(req.params.id, userId);
     res.json({ message: 'Image deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete image' });
@@ -189,7 +192,7 @@ exports.searchImages = async (req, res) => {
       return res.status(400).json({ error: 'Missing query parameter' });
     }
 
-    const results = await dbService.searchImages(query, req.user.username, { page: parseInt(page), limit: parseInt(limit), sort, order });
+    const results = await dbService.searchImages(query, req.user.sub, { page: parseInt(page), limit: parseInt(limit), sort, order });
     res.json({
       data: results.data,
       pagination: results.pagination,
@@ -204,7 +207,7 @@ exports.searchImages = async (req, res) => {
 exports.filterImages = async (req, res) => {
   try {
     const { sizeRange, dateRange, captionCategory, owner, page = 1, limit = 10, sort = 'uploadDate', order = 'desc' } = req.query;
-    const results = await dbService.filterImages({ sizeRange, dateRange, captionCategory, owner }, req.user.username, { page: parseInt(page), limit: parseInt(limit), sort, order });
+    const results = await dbService.filterImages({ sizeRange, dateRange, captionCategory, owner }, req.user.sub, { page: parseInt(page), limit: parseInt(limit), sort, order });
     
     res.json({
       data: results.data,
@@ -219,7 +222,7 @@ exports.filterImages = async (req, res) => {
 
 exports.getTagCategories = async (req, res) => {
   try {
-    const categories = await dbService.getTagCategories(req.user.username);
+    const categories = await dbService.getTagCategories(req.user.sub);
     res.json(categories || []);
   } catch (error) {
     console.error('Failed to retrieve tag categories:', error);
@@ -307,7 +310,7 @@ exports.deleteImageAdmin = async (req, res) => {
 exports.processImage = async (req, res) => {
   try {
     const imageId = req.params.id;
-    const image = await dbService.getImageById(imageId, req.user.username);
+    const image = await dbService.getImageById(imageId, req.user.sub);
     
     if (!image) {
       return res.status(404).json({ error: 'Image not found' });
@@ -342,12 +345,12 @@ exports.updateImage = async (req, res) => {
     const { id } = req.params;
     const { displayName, tags } = req.body;
     
-    const image = await dbService.getImageById(id, req.user.username);
+    const image = await dbService.getImageById(id, req.user.sub);
     if (!image) {
       return res.status(404).json({ error: 'Image not found' });
     }
     
-    if (image.owner !== req.user.username && req.user.role !== 'admin') {
+    if (image.owner !== req.user.sub && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Access denied' });
     }
     
@@ -371,12 +374,12 @@ exports.patchImage = async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
     
-    const image = await dbService.getImageById(id, req.user.username);
+    const image = await dbService.getImageById(id, req.user.sub);
     if (!image) {
       return res.status(404).json({ error: 'Image not found' });
     }
     
-    if (image.owner !== req.user.username && req.user.role !== 'admin') {
+    if (image.owner !== req.user.sub && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Access denied' });
     }
     
@@ -411,7 +414,7 @@ exports.stageImage = async (req, res) => {
       return res.status(400).json({ message: 'No image file provided.' });
     }
     const imageId = uuidv4();
-    const userId = req.user.username;
+    const userId = req.user.sub;
     
     // Store in S3 instead of memory for statelessness
     const stagingKey = await s3Service.uploadImage(
@@ -432,10 +435,10 @@ exports.stageImage = async (req, res) => {
 exports.processStagedImage = async (req, res) => {
   try {
     const { imageId } = req.params;
-    const userId = req.user.username;
+    const userId = req.user.sub;
     
     // Get staged image from S3
-    const stagingKey = `${userId}/${imageId}-staging.jpg`;
+    const stagingKey = `${imageId}/staging.jpg`;
     const imageBuffer = await s3Service.getImageBuffer(stagingKey);
     
     if (!imageBuffer) {
@@ -462,12 +465,12 @@ exports.reEnhanceImage = async (req, res) => {
     const { id } = req.params;
     const { autoEnhance, addWatermark, applyFilter } = req.body;
     
-    const originalImage = await dbService.getImageById(id, req.user.username);
+    const originalImage = await dbService.getImageById(id, req.user.sub);
     if (!originalImage) {
       return res.status(404).json({ error: 'Image not found' });
     }
     
-    if (originalImage.owner !== req.user.username && req.user.role !== 'admin') {
+    if (originalImage.owner !== req.user.sub && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Access denied' });
     }
     
@@ -536,7 +539,7 @@ exports.reEnhanceImage = async (req, res) => {
 exports.getPresignedUploadUrl = async (req, res) => {
   try {
     const { filename, contentType } = req.body;
-    const userId = req.user.username;
+    const userId = req.user.sub;
     const imageId = Date.now().toString();
     
     const key = `${userId}/${imageId}-original.jpg`;
@@ -557,8 +560,8 @@ exports.getPresignedUploadUrl = async (req, res) => {
 // Get pre-signed URL for image download
 exports.getPresignedDownloadUrl = async (req, res) => {
   try {
-    const image = await dbService.getImageById(req.params.id, req.user.username);
-    if (!image || image.owner !== req.user.username) {
+    const image = await dbService.getImageById(req.params.id, req.user.sub);
+    if (!image || image.owner !== req.user.sub) {
       return res.status(404).json({ error: 'Image not found' });
     }
     

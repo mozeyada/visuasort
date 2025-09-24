@@ -215,6 +215,8 @@ Resources:
       UserPoolId: !Ref VisuasortUserPool
       Precedence: 2
 
+
+
   # Secrets Manager Secret
   VisuasortSecrets:
     Type: AWS::SecretsManager::Secret
@@ -370,3 +372,4 @@ Outputs:
     Value: !Ref VisuasortSecrets
     Export:
       Name: !Sub "${AWS::StackName}-SecretsArn"
+  

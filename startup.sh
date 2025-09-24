@@ -7,11 +7,11 @@ echo "==========================================="
 
 # 1. Check and start Docker container
 echo "Checking Docker container status..."
-if docker ps | grep -q visuasort; then
+if docker ps | grep -q visuasort-app; then
     echo "Container is running"
 else
     echo "Starting container..."
-    docker run -d -p 3000:3000 --name visuasort 901444280953.dkr.ecr.ap-southeast-2.amazonaws.com/n11693860-repo:latest
+    docker run -d --name visuasort-app -p 3000:3000 --restart unless-stopped 901444280953.dkr.ecr.ap-southeast-2.amazonaws.com/n11693860-repo:latest
     echo "Waiting for container to start..."
     sleep 10
 fi
