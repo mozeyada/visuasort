@@ -435,7 +435,7 @@ exports.processStagedImage = async (req, res) => {
     const userId = req.user.username;
     
     // Get staged image from S3
-    const stagingKey = `images/${userId}/${imageId}/staging.jpg`;
+    const stagingKey = `${userId}/${imageId}-staging.jpg`;
     const imageBuffer = await s3Service.getImageBuffer(stagingKey);
     
     if (!imageBuffer) {
@@ -539,7 +539,7 @@ exports.getPresignedUploadUrl = async (req, res) => {
     const userId = req.user.username;
     const imageId = Date.now().toString();
     
-    const key = `images/${userId}/${imageId}/original.jpg`;
+    const key = `${userId}/${imageId}-original.jpg`;
     
     const uploadUrl = await s3Service.getPresignedUploadUrl(key, contentType);
     

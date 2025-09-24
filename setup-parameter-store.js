@@ -6,9 +6,9 @@ async function setupParameters() {
   const parameters = [
     {
       Name: '/n11693860/visuasort/app-url',
-      Value: 'http://n11693860-visuasort.cab432.com:3000',
+      Value: 'PLACEHOLDER-SET-BY-CLOUDFORMATION',
       Type: 'String',
-      Description: 'Visuasort application URL for frontend'
+      Description: 'Application URL for frontend (will be updated by CloudFormation with EC2 IP)'
     },
     {
       Name: '/n11693860/visuasort/domain-url',
@@ -27,6 +27,12 @@ async function setupParameters() {
       Value: '10485760',
       Type: 'String',
       Description: 'Maximum upload size in bytes (10MB)'
+    },
+    {
+      Name: '/n11693860/visuasort/elasticache-endpoint',
+      Value: 'PLACEHOLDER-SET-BY-CLOUDFORMATION',
+      Type: 'String',
+      Description: 'ElastiCache endpoint (will be updated by CloudFormation)'
     }
   ];
 

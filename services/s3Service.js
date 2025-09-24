@@ -8,7 +8,7 @@ class S3Service {
   }
 
   async uploadImage(userId, imageId, buffer, format = 'original', extension = 'jpg') {
-    const key = `images/${userId}/${imageId}/${format}.${extension}`;
+    const key = `${userId}/${imageId}-${format}.${extension}`;
     
     await this.s3Client.send(new PutObjectCommand({
       Bucket: this.bucketName,

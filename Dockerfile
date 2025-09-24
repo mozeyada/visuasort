@@ -33,9 +33,8 @@ COPY create-*.js ./
 COPY check-*.js ./
 COPY index.js .
 
-# Create required directories
-COPY uploads/.gitkeep ./uploads/
-COPY data/.gitkeep ./data/
+# Frontend build is already in place from the build step above
+# No additional copy needed - index.js serves from frontend/build
 
 # Security: Set proper permissions and switch to non-root user
 RUN chown -R node:node /app

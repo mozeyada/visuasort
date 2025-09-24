@@ -208,7 +208,7 @@ const Gallery = ({ token, user, onLogout }) => {
         <h1>Visuasort Gallery</h1>
         <div className="header-controls">
           <span className="user-info">
-            {user?.role === 'admin' ? '👑 Admin' : '👤 User'}
+            {user?.role === 'admin' ? '👑 Admin' : '👤 User'} - {user?.email || user?.username}
           </span>
           {user?.role === 'admin' && (
             <>

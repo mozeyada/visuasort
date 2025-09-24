@@ -202,7 +202,7 @@ Resources:
   AdminGroup:
     Type: AWS::Cognito::UserPoolGroup
     Properties:
-      GroupName: Administrators
+      GroupName: admins
       Description: Admin users with full access
       UserPoolId: !Ref VisuasortUserPool
       Precedence: 1
@@ -210,7 +210,7 @@ Resources:
   UsersGroup:
     Type: AWS::Cognito::UserPoolGroup
     Properties:
-      GroupName: Users
+      GroupName: users
       Description: Standard users
       UserPoolId: !Ref VisuasortUserPool
       Precedence: 2

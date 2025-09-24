@@ -167,7 +167,7 @@ class VisuaSortDynamoService {
       // Invalidate cache
       try {
         await elasticacheService.invalidateUserImages(owner);
-        await elasticacheService.delete(`image:${id}`);
+        await elasticacheService.invalidateImageMetadata(id);
       } catch (cacheError) {
         console.warn('Cache invalidation failed:', cacheError.message);
       }

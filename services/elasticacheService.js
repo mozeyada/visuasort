@@ -22,10 +22,9 @@ class CacheService {
       console.warn('Parameter Store failed, using fallback endpoint');
     }
     
-    // Fallback to hardcoded endpoint if Parameter Store fails
+    // No fallback - Parameter Store is required for production
     if (!elasticacheEndpoint) {
-      elasticacheEndpoint = 'visuasort.km2jzi.cfg.apse2.cache.amazonaws.com:11211';
-      console.log('Using fallback ElastiCache endpoint');
+      throw new Error('ElastiCache endpoint not found in Parameter Store. Run setup-parameter-store.js first.');
     }
     this.memcached = new Memcached(elasticacheEndpoint, {
       timeout: 1000,

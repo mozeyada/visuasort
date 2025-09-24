@@ -29,7 +29,7 @@ class ParameterService {
         timestamp: Date.now()
       });
       
-      console.log(`✅ Parameter Store: Retrieved ${name}`);
+      console.log(`Parameter Store: Retrieved ${name}`);
       return value;
     } catch (error) {
       console.error(`❌ Parameter Store failed for ${name}:`, error.message);
