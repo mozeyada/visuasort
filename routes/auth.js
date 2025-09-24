@@ -7,6 +7,7 @@ const router = express.Router();
 router.post('/register', cognitoController.register);
 router.post('/confirm', cognitoController.confirmRegistration);
 router.post('/login', cognitoController.login);
+router.post('/verify-mfa', cognitoController.verifyMfa);
 router.get('/verify', cognitoController.verifyToken);
 
 module.exports = router;

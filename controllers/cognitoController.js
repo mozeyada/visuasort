@@ -47,13 +47,47 @@ exports.login = async (req, res) => {
     }
 
     const result = await cognitoService.authenticate(username, password);
+    
+    if (result.success) {
+      res.json({
+        token: result.tokens.idToken,
+        user: result.user
+      });
+    } else if (result.challengeName) {
+      // MFA challenge required
+      res.json({
+        mfaRequired: true,
+        challengeName: result.challengeName,
+        session: result.session,
+        message: result.message
+      });
+    } else {
+      res.status(401).json({ error: 'Authentication failed' });
+    }
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(401).json({ error: error.message || 'Login failed' });
+  }
+};
+
+exports.verifyMfa = async (req, res) => {
+  try {
+    const { username, mfaCode, session, challengeName } = req.body;
+    
+    if (!username || !mfaCode || !session) {
+      return res.status(400).json({ 
+        error: 'Username, MFA code, and session are required' 
+      });
+    }
+
+    const result = await cognitoService.verifyMfaCode(username, mfaCode, session, challengeName);
     res.json({
       token: result.tokens.idToken,
       user: result.user
     });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(401).json({ error: error.message || 'Login failed' });
+    console.error('MFA verification error:', error);
+    res.status(401).json({ error: error.message || 'MFA verification failed' });
   }
 };
 

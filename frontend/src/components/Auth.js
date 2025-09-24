@@ -3,11 +3,15 @@ import React, { useState } from 'react';
 const Auth = ({ onLogin }) => {
   const [mode, setMode] = useState('login');
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showMfa, setShowMfa] = useState(false);
+  const [mfaSession, setMfaSession] = useState('');
+  const [challengeName, setChallengeName] = useState('');
   const [formData, setFormData] = useState({
     username: '',
     password: '',
     email: '',
-    confirmationCode: ''
+    confirmationCode: '',
+    mfaCode: ''
   });
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -32,6 +36,14 @@ const Auth = ({ onLogin }) => {
         body = {
           username: formData.email,
           confirmationCode: formData.confirmationCode
+        };
+      } else if (mode === 'mfa') {
+        endpoint = '/api/v1/auth/verify-mfa';
+        body = {
+          username: formData.email,
+          mfaCode: formData.mfaCode,
+          session: mfaSession,
+          challengeName: challengeName
         };
       } else {
         endpoint = '/api/v1/auth/login';
@@ -58,10 +70,23 @@ const Auth = ({ onLogin }) => {
           setMessage('Email confirmed! You can now login.');
           setShowConfirm(false);
           setMode('login');
-        } else {
+        } else if (mode === 'mfa') {
           localStorage.setItem('token', data.token);
           localStorage.setItem('user', JSON.stringify(data.user));
           onLogin({ token: data.token, user: data.user });
+        } else {
+          // Login response
+          if (data.mfaRequired) {
+            setMessage('MFA code sent to your email. Please check your inbox.');
+            setMfaSession(data.session);
+            setChallengeName(data.challengeName);
+            setShowMfa(true);
+            setMode('mfa');
+          } else {
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('user', JSON.stringify(data.user));
+            onLogin({ token: data.token, user: data.user });
+          }
         }
       } else {
         setMessage(data.error || 'Operation failed');
@@ -97,6 +122,14 @@ const Auth = ({ onLogin }) => {
               onClick={() => setMode('confirm')}
             >
               Confirm
+            </button>
+          )}
+          {showMfa && (
+            <button 
+              className={`auth-tab ${mode === 'mfa' ? 'active' : ''}`}
+              onClick={() => setMode('mfa')}
+            >
+              MFA
             </button>
           )}
         </div>
@@ -139,10 +172,24 @@ const Auth = ({ onLogin }) => {
             </div>
           )}
 
+          {mode === 'mfa' && (
+            <div className="form-group">
+              <input
+                type="text"
+                placeholder="MFA Code (check your email)"
+                value={formData.mfaCode}
+                onChange={(e) => setFormData({...formData, mfaCode: e.target.value})}
+                required
+                className="form-input"
+              />
+            </div>
+          )}
+
           <button type="submit" className="auth-button" disabled={loading}>
             {loading ? 'Processing...' : 
              mode === 'register' ? 'Register' : 
-             mode === 'confirm' ? 'Confirm Email' : 'Login'}
+             mode === 'confirm' ? 'Confirm Email' : 
+             mode === 'mfa' ? 'Verify MFA' : 'Login'}
           </button>
         </form>
 

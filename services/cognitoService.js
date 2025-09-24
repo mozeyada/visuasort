@@ -132,6 +132,22 @@ class CognitoService {
     try {
       const response = await this.client.send(command);
       
+      console.log('Cognito authentication response:', {
+        challengeName: response.ChallengeName,
+        hasSession: !!response.Session,
+        hasAuthResult: !!response.AuthenticationResult
+      });
+      
+      // Handle ALL MFA challenges
+      if (response.ChallengeName && response.ChallengeName.includes('MFA')) {
+        return {
+          success: false,
+          challengeName: response.ChallengeName,
+          session: response.Session,
+          message: 'MFA code required. Check your email for the verification code.'
+        };
+      }
+      
       // Handle NEW_PASSWORD_REQUIRED challenge
       if (response.ChallengeName === 'NEW_PASSWORD_REQUIRED') {
         const challengeParams = {
@@ -199,7 +215,10 @@ class CognitoService {
         };
       }
       
-      throw new Error('Authentication failed - no tokens returned');
+      // If we get here, there was no AuthenticationResult and no challenge
+      // This shouldn't happen, but let's handle it gracefully
+      console.log('Unexpected response from Cognito:', response);
+      throw new Error('Authentication failed - unexpected response from Cognito');
     } catch (error) {
       console.error('Cognito Authentication error:', error);
       const message = this.sanitizeError(error, 'Login failed');
@@ -283,6 +302,66 @@ class CognitoService {
     };
     
     return errorMap[error.name] || defaultMessage;
+  }
+
+  async verifyMfaCode(username, mfaCode, session, challengeName = 'SMS_MFA') {
+    const config = await this.getConfig();
+    
+    const challengeParams = {
+      USERNAME: username,
+      SMS_MFA_CODE: mfaCode  // For email MFA, Cognito often uses SMS_MFA_CODE
+    };
+    
+    if (config.clientSecret) {
+      challengeParams.SECRET_HASH = this.secretHash(config.clientId, config.clientSecret, username);
+    }
+    
+    const command = new RespondToAuthChallengeCommand({
+      ClientId: config.clientId,
+      ChallengeName: challengeName,
+      Session: session,
+      ChallengeResponses: challengeParams
+    });
+    
+    console.log('MFA verification attempt:', {
+      challengeName: challengeName,
+      username: username,
+      hasSession: !!session,
+      hasCode: !!mfaCode
+    });
+
+    try {
+      const response = await this.client.send(command);
+      
+      if (response.AuthenticationResult) {
+        const { IdToken, AccessToken, RefreshToken } = response.AuthenticationResult;
+        
+        const verifier = await this.getJwtVerifier();
+        const payload = await verifier.verify(IdToken);
+        
+        return {
+          success: true,
+          tokens: {
+            idToken: IdToken,
+            accessToken: AccessToken,
+            refreshToken: RefreshToken
+          },
+          user: {
+            username: payload['cognito:username'],
+            email: payload.email,
+            role: this.determineRole(payload['cognito:groups'] || []),
+            groups: payload['cognito:groups'] || [],
+            sub: payload.sub
+          }
+        };
+      }
+      
+      throw new Error('MFA verification failed - no tokens returned');
+    } catch (error) {
+      console.error('MFA verification error:', error);
+      const message = this.sanitizeError(error, 'MFA verification failed');
+      throw new Error(message);
+    }
   }
 
   async addUserToGroup(username, groupName) {
