@@ -63,11 +63,12 @@ class VisuaSortDynamoService {
   async getImages(owner, options = {}) {
     const { page = 1, limit = 10, sort = 'uploadDate', order = 'desc' } = options;
     
-    // Check cache first
+    // Check cache first for metadata (URLs will be generated fresh)
     try {
       const cached = await elasticacheService.getUserImages(owner);
-      if (cached) {
-        console.log('Cache hit: user images for', owner);
+      if (cached && cached.data) {
+        console.log('Cache hit: user images metadata for', owner);
+        // Return cached metadata but URLs will be generated fresh in controller
         return cached;
       }
     } catch (cacheError) {
@@ -93,9 +94,17 @@ class VisuaSortDynamoService {
       const images = response.Items || [];
       const result = this.applySortingAndPagination(images, { page, limit, sort, order });
       
-      // Cache the result (non-blocking)
+      // Cache metadata without URLs to prevent expiry issues
       try {
-        await elasticacheService.cacheUserImages(owner, result.data, result.pagination);
+        const metadataOnly = result.data.map(img => ({
+          ...img,
+          // Remove URL fields before caching
+          originalUrl: undefined,
+          enhancedUrl: undefined,
+          thumbnailUrl: undefined,
+          webUrl: undefined
+        }));
+        await elasticacheService.cacheUserImages(owner, { data: metadataOnly, pagination: result.pagination });
       } catch (cacheError) {
         console.warn('Cache write failed:', cacheError.message);
       }

@@ -7,7 +7,7 @@ const path = require('path');
 exports.uploadComplete = async (req, res) => {
   try {
     const { key, imageId, filename, size, useAI, autoEnhance, addWatermark, applyFilter } = req.body;
-    const userId = req.user.username;
+    const userId = req.user.sub;
     
     // Get processing options
     const enhanceOptions = {
@@ -44,7 +44,7 @@ exports.uploadComplete = async (req, res) => {
       tags: useAI ? ['processing...'] : ['Personal'],
       uploadDate: new Date().toISOString(),
       size: size,
-      owner: req.user.username,
+      owner: userId,
       hasEnhancements: enhanceOptions.autoEnhance || enhanceOptions.addWatermark || enhanceOptions.applyFilter !== 'none'
     };
 

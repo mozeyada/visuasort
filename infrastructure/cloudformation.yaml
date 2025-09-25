@@ -68,6 +68,8 @@ Resources:
       SecurityGroupIds:
         - !Ref VisuasortSecurityGroup
       IamInstanceProfile: !Ref EC2InstanceProfile
+      Monitoring: true  # Enable detailed monitoring
+      EbsOptimized: true  # Enable EBS optimization
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
