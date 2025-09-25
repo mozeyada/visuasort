@@ -587,3 +587,34 @@ exports.getPresignedDownloadUrl = async (req, res) => {
   }
 };
 
+// Complete direct S3 upload
+exports.uploadComplete = async (req, res) => {
+  try {
+    const { key, imageId, filename, size } = req.body;
+    const userId = req.user.sub;
+
+    const metadata = {
+      id: imageId,
+      filename: filename,
+      displayName: filename,
+      originalKey: key,
+      tags: ['Direct Upload'],
+      uploadDate: new Date().toISOString(),
+      size: size,
+      owner: userId,
+      hasEnhancements: false
+    };
+
+    await dbService.saveImage(metadata);
+    
+    res.json({ 
+      message: 'Direct upload completed successfully',
+      imageId: imageId
+    });
+    
+  } catch (error) {
+    console.error('Upload complete error:', error);
+    res.status(500).json({ error: 'Failed to complete upload' });
+  }
+};
+

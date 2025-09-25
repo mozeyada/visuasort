@@ -64,9 +64,10 @@ class CognitoService {
       // Add user to 'users' group after successful registration
       try {
         await this.addUserToGroup(username, 'users');
+        console.log(`✅ User ${username} added to 'users' group`);
       } catch (groupError) {
         console.warn('Failed to add user to group:', groupError.message);
-        // Don't fail registration if group assignment fails
+        // Don't fail registration if group assignment fails - admins are created manually
       }
       
       return {

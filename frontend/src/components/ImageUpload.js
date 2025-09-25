@@ -8,16 +8,81 @@ const ImageUpload = ({ onUpload }) => {
   const [autoEnhance, setAutoEnhance] = useState(false);
   const [addWatermark, setAddWatermark] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState('none');
+  const [uploadMethod, setUploadMethod] = useState('standard');
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
     setMessage('');
   };
 
+  const handleDirectUpload = async () => {
+    if (!file) return;
+    
+    setUploading(true);
+    setMessage('Getting pre-signed URL...');
+    
+    try {
+      const token = localStorage.getItem('token');
+      
+      // Step 1: Get pre-signed URL
+      const response = await fetch('/api/v1/images/presigned-upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: file.type
+        })
+      });
+      
+      if (!response.ok) throw new Error('Failed to get upload URL');
+      const { uploadUrl, key, imageId } = await response.json();
+      
+      setMessage('Uploading directly to S3...');
+      
+      // Step 2: Upload directly to S3
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type }
+      });
+      
+      if (!uploadResponse.ok) throw new Error('Direct S3 upload failed');
+      
+      setMessage('Notifying backend...');
+      
+      // Step 3: Notify backend
+      await fetch('/api/v1/images/upload-complete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ key, imageId, filename: file.name, size: file.size })
+      });
+      
+      setMessage('✅ Direct S3 upload successful!');
+      setFile(null);
+      if (onUpload) onUpload();
+      
+    } catch (error) {
+      setMessage('❌ Direct upload failed: ' + error.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!file) {
       setMessage('Please select an image');
+      return;
+    }
+
+    if (uploadMethod === 'direct') {
+      await handleDirectUpload();
       return;
     }
 
@@ -55,7 +120,32 @@ const ImageUpload = ({ onUpload }) => {
             onChange={handleFileChange}
             disabled={uploading}
           />
-          <div className="enhancement-options">
+          
+          <div className="upload-method-selection">
+            <label className="radio-option">
+              <input
+                type="radio"
+                name="uploadMethod"
+                value="standard"
+                checked={uploadMethod === 'standard'}
+                onChange={(e) => setUploadMethod(e.target.value)}
+                disabled={uploading}
+              />
+              📎 Standard Upload (with processing)
+            </label>
+            <label className="radio-option">
+              <input
+                type="radio"
+                name="uploadMethod"
+                value="direct"
+                checked={uploadMethod === 'direct'}
+                onChange={(e) => setUploadMethod(e.target.value)}
+                disabled={uploading}
+              />
+              🚀 Direct S3 Upload (Assessment Demo)
+            </label>
+          </div>
+          {uploadMethod === 'standard' && <div className="enhancement-options">
             <label className="checkbox-option">
               <input
                 type="checkbox"
@@ -101,13 +191,13 @@ const ImageUpload = ({ onUpload }) => {
                 <option value="soft_portrait">Soft Portrait</option>
               </select>
             </div>
-          </div>
+          </div>}
           <button 
             type="submit" 
             disabled={uploading || !file}
             className="btn btn-primary"
           >
-            {uploading ? 'Uploading...' : 'Upload'}
+            {uploading ? 'Uploading...' : (uploadMethod === 'direct' ? 'Direct Upload to S3' : 'Upload & Process')}
           </button>
         </div>
         {message && (

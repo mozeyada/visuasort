@@ -1,7 +1,6 @@
 const express = require('express');
 const multer = require('multer');
 const imageController = require('../controllers/imageController');
-const uploadController = require('../controllers/uploadController');
 const cognitoAuth = require('../middleware/cognitoAuth');
 const { v4: uuidv4 } = require('uuid');
 
@@ -54,7 +53,7 @@ router.delete('/:id', cognitoAuth, imageController.deleteImage);
 
 // Pre-signed URL endpoints for Assessment 2
 router.post('/presigned-upload', cognitoAuth, imageController.getPresignedUploadUrl);
-router.post('/upload-complete', cognitoAuth, uploadController.uploadComplete);
+router.post('/upload-complete', cognitoAuth, imageController.uploadComplete);
 router.get('/:id/presigned-url', cognitoAuth, imageController.getPresignedDownloadUrl);
 
 module.exports = router;

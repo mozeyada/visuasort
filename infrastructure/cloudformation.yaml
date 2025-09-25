@@ -167,6 +167,9 @@ Resources:
         - email
       UsernameConfiguration:
         CaseSensitive: false
+      MfaConfiguration: OPTIONAL
+      EnabledMfas:
+        - EMAIL_OTP
       Policies:
         PasswordPolicy:
           MinimumLength: 8

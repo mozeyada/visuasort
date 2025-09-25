@@ -30,9 +30,9 @@ async function setupParameters() {
     },
     {
       Name: '/n11693860/visuasort/elasticache-endpoint',
-      Value: 'PLACEHOLDER-SET-BY-CLOUDFORMATION',
+      Value: 'visuasortcache.km2jzi.cfg.apse2.cache.amazonaws.com:11211',
       Type: 'String',
-      Description: 'ElastiCache endpoint (will be updated by CloudFormation)'
+      Description: 'ElastiCache endpoint for Memcached cluster'
     }
   ];
 
