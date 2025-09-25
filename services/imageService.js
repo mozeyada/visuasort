@@ -98,7 +98,7 @@ const applyFilter = async (inputBuffer, filterType) => {
         .modulate({ brightness: 1.1, contrast: 1.2 }) // Boost brightness and contrast
         .blur(1.5) // Light blur for artistic effect
         .sharpen(2, 1, 2) // Moderate sharpening
-        .gamma(0.9) // Slightly darker gamma for artistic look
+        .gamma(1.1) // gamma for artistic look
         .normalize() // Normalize after adjustments
         .toBuffer();
       // Second pass for refinement

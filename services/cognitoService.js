@@ -138,8 +138,8 @@ class CognitoService {
         hasAuthResult: !!response.AuthenticationResult
       });
       
-      // Handle ALL MFA challenges
-      if (response.ChallengeName && response.ChallengeName.includes('MFA')) {
+      // Handle ALL MFA challenges including EMAIL_OTP
+      if (response.ChallengeName && (response.ChallengeName.includes('MFA') || response.ChallengeName === 'EMAIL_OTP')) {
         return {
           success: false,
           challengeName: response.ChallengeName,
@@ -304,13 +304,21 @@ class CognitoService {
     return errorMap[error.name] || defaultMessage;
   }
 
-  async verifyMfaCode(username, mfaCode, session, challengeName = 'SMS_MFA') {
+  async verifyMfaCode(username, mfaCode, session, challengeName = 'EMAIL_OTP') {
     const config = await this.getConfig();
     
+    // Use correct parameter based on challenge type
     const challengeParams = {
-      USERNAME: username,
-      SMS_MFA_CODE: mfaCode  // For email MFA, Cognito often uses SMS_MFA_CODE
+      USERNAME: username
     };
+    
+    if (challengeName === 'EMAIL_OTP') {
+      challengeParams.EMAIL_OTP_CODE = mfaCode;
+    } else if (challengeName.includes('SMS')) {
+      challengeParams.SMS_MFA_CODE = mfaCode;
+    } else {
+      challengeParams.SOFTWARE_TOKEN_MFA_CODE = mfaCode;
+    }
     
     if (config.clientSecret) {
       challengeParams.SECRET_HASH = this.secretHash(config.clientId, config.clientSecret, username);

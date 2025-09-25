@@ -94,20 +94,24 @@ exports.getImages = async (req, res) => {
     const userId = req.user.sub;
     const images = await dbService.getImages(userId, { page: parseInt(page), limit: parseInt(limit), sort, order });
     
-    // Add S3 URLs for frontend
+    // Add S3 URLs for frontend with error handling
     const imagesWithUrls = await Promise.all(images.data.map(async (image) => {
       const imageWithUrls = { ...image };
-      if (image.originalKey) {
-        imageWithUrls.originalUrl = await s3Service.getPresignedUrl(image.originalKey);
-      }
-      if (image.enhancedKey) {
-        imageWithUrls.enhancedUrl = await s3Service.getPresignedUrl(image.enhancedKey);
-      }
-      if (image.thumbnailKey) {
-        imageWithUrls.thumbnailUrl = await s3Service.getPresignedUrl(image.thumbnailKey);
-      }
-      if (image.webKey) {
-        imageWithUrls.webUrl = await s3Service.getPresignedUrl(image.webKey);
+      try {
+        if (image.originalKey) {
+          imageWithUrls.originalUrl = await s3Service.getPresignedUrl(image.originalKey);
+        }
+        if (image.enhancedKey) {
+          imageWithUrls.enhancedUrl = await s3Service.getPresignedUrl(image.enhancedKey);
+        }
+        if (image.thumbnailKey) {
+          imageWithUrls.thumbnailUrl = await s3Service.getPresignedUrl(image.thumbnailKey);
+        }
+        if (image.webKey) {
+          imageWithUrls.webUrl = await s3Service.getPresignedUrl(image.webKey);
+        }
+      } catch (error) {
+        console.warn(`Failed to generate presigned URLs for image ${image.id}:`, error.message);
       }
       return imageWithUrls;
     }));
@@ -240,20 +244,25 @@ exports.getAllImagesAdmin = async (req, res) => {
     const { page = 1, limit = 10, sort = 'uploadDate', order = 'desc' } = req.query;
     const images = await dbService.getAllImages({ page: parseInt(page), limit: parseInt(limit), sort, order, owner: null });
     
-    // Add S3 URLs for admin view
+    // Add S3 URLs for admin view with error handling
     const imagesWithUrls = await Promise.all(images.data.map(async (image) => {
       const imageWithUrls = { ...image };
-      if (image.originalKey) {
-        imageWithUrls.originalUrl = await s3Service.getPresignedUrl(image.originalKey);
-      }
-      if (image.enhancedKey) {
-        imageWithUrls.enhancedUrl = await s3Service.getPresignedUrl(image.enhancedKey);
-      }
-      if (image.thumbnailKey) {
-        imageWithUrls.thumbnailUrl = await s3Service.getPresignedUrl(image.thumbnailKey);
-      }
-      if (image.webKey) {
-        imageWithUrls.webUrl = await s3Service.getPresignedUrl(image.webKey);
+      try {
+        if (image.originalKey) {
+          imageWithUrls.originalUrl = await s3Service.getPresignedUrl(image.originalKey);
+        }
+        if (image.enhancedKey) {
+          imageWithUrls.enhancedUrl = await s3Service.getPresignedUrl(image.enhancedKey);
+        }
+        if (image.thumbnailKey) {
+          imageWithUrls.thumbnailUrl = await s3Service.getPresignedUrl(image.thumbnailKey);
+        }
+        if (image.webKey) {
+          imageWithUrls.webUrl = await s3Service.getPresignedUrl(image.webKey);
+        }
+      } catch (error) {
+        console.warn(`Failed to generate presigned URLs for image ${image.id}:`, error.message);
+        // Set placeholder URLs or leave undefined
       }
       return imageWithUrls;
     }));

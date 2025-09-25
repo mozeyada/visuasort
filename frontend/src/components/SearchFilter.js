@@ -17,6 +17,7 @@ const SearchFilter = ({ onSearch, onFilter, categories }) => {
   const handleFilterChange = (key, value) => {
     const newFilters = { ...filters, [key]: value };
     setFilters(newFilters);
+    onFilter(newFilters); // Apply filters immediately when changed
   };
 
   const applyFilters = () => {

@@ -119,6 +119,41 @@ class VisuaSortDynamoService {
       console.warn('Cache read failed:', cacheError.message);
     }
     
+    // If owner is null (admin query), scan all images to find by ID
+    if (owner === null) {
+      const command = new QueryCommand({
+        TableName: this.tableName,
+        KeyConditionExpression: "#pk = :pk",
+        FilterExpression: "contains(#sk, :id)",
+        ExpressionAttributeNames: {
+          "#pk": "qut-username",
+          "#sk": "imageId"
+        },
+        ExpressionAttributeValues: {
+          ":pk": this.qutUsername,
+          ":id": `#${id}`
+        }
+      });
+      
+      try {
+        const response = await this.docClient.send(command);
+        const image = response.Items?.[0] || null;
+        
+        if (image) {
+          try {
+            await elasticacheService.cacheImageMetadata(id, image);
+          } catch (cacheError) {
+            console.warn('Cache write failed:', cacheError.message);
+          }
+        }
+        
+        return image;
+      } catch (error) {
+        console.error('Database query failed for admin getImageById:', error);
+        return null;
+      }
+    }
+    
     const command = new QueryCommand({
       TableName: this.tableName,
       KeyConditionExpression: "#pk = :pk AND #sk = :sk",
@@ -177,9 +212,20 @@ class VisuaSortDynamoService {
     }
   }
 
-  async updateImageTags(id, tags, owner) {
-    const image = await this.getImageById(id, owner);
-    if (!image) return;
+  async updateImageTags(id, tags, owner = null) {
+    // First try to find the image - scan all if owner not provided
+    let image;
+    if (owner) {
+      image = await this.getImageById(id, owner);
+    } else {
+      // Scan all images to find by ID (for AI tagging callbacks)
+      image = await this.getImageById(id, null);
+    }
+    
+    if (!image) {
+      console.warn(`Image ${id} not found for tag update`);
+      return;
+    }
 
     const command = new UpdateCommand({
       TableName: this.tableName,
@@ -210,24 +256,38 @@ class VisuaSortDynamoService {
   }
 
   async searchImages(query, owner, options = {}) {
+    // Get all user images first, then filter client-side for better search
     const command = new QueryCommand({
       TableName: this.tableName,
       KeyConditionExpression: "#partitionKey = :username",
-      FilterExpression: "#owner = :owner AND (contains(filename, :query) OR contains(tags, :query))",
+      FilterExpression: "#owner = :owner",
       ExpressionAttributeNames: {
         "#partitionKey": "qut-username",
         "#owner": "owner"
       },
       ExpressionAttributeValues: {
         ":username": this.qutUsername,
-        ":owner": owner,
-        ":query": query.toLowerCase()
+        ":owner": owner
       }
     });
 
     try {
       const response = await this.docClient.send(command);
-      return this.applySortingAndPagination(response.Items || [], options);
+      const images = response.Items || [];
+      
+      // Client-side filtering for better search functionality
+      const searchTerm = query.toLowerCase();
+      const filteredImages = images.filter(img => {
+        const filename = (img.filename || '').toLowerCase();
+        const displayName = (img.displayName || '').toLowerCase();
+        const tags = Array.isArray(img.tags) ? img.tags.join(' ').toLowerCase() : '';
+        
+        return filename.includes(searchTerm) || 
+               displayName.includes(searchTerm) || 
+               tags.includes(searchTerm);
+      });
+      
+      return this.applySortingAndPagination(filteredImages, options);
     } catch (error) {
       console.error('Database search operation failed:', error);
       return { data: [], pagination: { page: 1, limit: 10, total: 0, pages: 0, hasNext: false, hasPrev: false } };
@@ -270,6 +330,13 @@ class VisuaSortDynamoService {
           if (filters.dateRange === 'today' && daysDiff > 1) return false;
           if (filters.dateRange === 'week' && daysDiff > 7) return false;
           if (filters.dateRange === 'month' && daysDiff > 30) return false;
+          if (filters.dateRange === 'thismonth') {
+            const uploadMonth = uploadDate.getMonth();
+            const currentMonth = now.getMonth();
+            const uploadYear = uploadDate.getFullYear();
+            const currentYear = now.getFullYear();
+            if (uploadMonth !== currentMonth || uploadYear !== currentYear) return false;
+          }
         }
         
         if (filters.captionCategory && img.tags) {
